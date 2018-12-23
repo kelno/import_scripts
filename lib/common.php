@@ -42,6 +42,8 @@ class DBStore
 	public $spawn_group = []; //key has NO MEANING
 	public $creature_formations = []; //key is memberGUID
 	public $pool_creature = []; //key is spawnID
+	public $trainer = []; //key is ID
+	public $trainer_spell = []; //key has NO MEANING
 	
 	private $loadmode = null;
 	
@@ -131,6 +133,15 @@ class DBStore
 			$stmt = $conn->query("SELECT * FROM {$databaseName}.creature_entry");
 			$stmt->setFetchMode(PDO::FETCH_OBJ);
 			$this->creature_entry = $stmt->fetchAll();
+			
+			$stmt = $conn->query("SELECT * FROM {$databaseName}.trainer");
+			$stmt->setFetchMode(PDO::FETCH_OBJ);
+			foreach($stmt->fetchAll() as $v)
+				$this->trainer[$v->Id] = $v;
+			
+			$stmt = $conn->query("SELECT * FROM {$databaseName}.trainer_spell");
+			$stmt->setFetchMode(PDO::FETCH_OBJ);
+			$this->trainer_spell = $stmt->fetchAll();
 		}
 		
 		$stmt = $conn->query("SELECT * FROM {$databaseName}.gameobject");
