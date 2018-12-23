@@ -42,15 +42,15 @@ foreach($stmt->fetchAll() as $v) {
 	switch($v["import"])
 	{
 		case "SMART": //GOSSIP+SMART
-			$sql .= CreateSmartAI($v['entry'], SmartSourceType::creature);
+			CreateSmartAI($v['entry'], SmartSourceType::creature);
 			//nobreak
 		case "GOSSIP": 
 			$setflag = $v['npcflag'] & 1;
 			$menu_id = $v['gossip_menu_id'];
-			$sql .= CreateMenu($menu_id); //$menu_id might get changed here
-			$sql .= SetMenuId($v['entry'], $menu_id, $setflag);
+			CreateMenu($menu_id); //$menu_id might get changed here
+			SetMenuId($v['entry'], $menu_id, $setflag);
 			if($current_sun_menu_id = $v['sunMenuID'])
-				$sql .= DeleteSunMenu($current_sun_menu_id);
+				DeleteSunMenu($current_sun_menu_id);
 	
 			break;
 		default:

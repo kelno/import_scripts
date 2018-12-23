@@ -6,17 +6,17 @@ include_once(__DIR__ . '/smartai.php');
 
 function DeleteSunCreatureSpawn($spawn_id)
 {
-	global $sunStore;
+	global $sunStore, $file;
 	
 	if(CheckAlreadyImported($spawn_id))
-		return "";
+		return;
 	
 	$sql = "DELETE ce, c1, c2, sg FROM creature_entry ce " .
 				"LEFT JOIN conditions c1 ON c1.ConditionValue3 = {$spawn_id} AND c1.ConditionTypeOrReference = 31 " .
 				"LEFT JOIN conditions c2 ON c1.SourceEntry = -{$spawn_id} AND c2.SourceTypeOrReferenceId = 22 " .
 				"LEFT JOIN spawn_group sg ON sg.spawnID = {$spawn_id} AND spawnType = 0 " .
 				"WHERE ce.spawnID = {$spawn_id};" . PHP_EOL;
-			
+	fwrite($file, $sql);
 			
 	//warn smart scripts references removal
 	$results = FindAll($sunStore->smart_scripts, "entryorguid", -$spawn_id);
@@ -34,8 +34,6 @@ function DeleteSunCreatureSpawn($spawn_id)
 		
 		echo "WARNING: Deleting creature {$guid} targeted by a smartscript ({$result['entryorguid']}, {$result['id']}). Smart scripts ref has been left as is." . PHP_EOL;
 	}
-	
-	return $sql;
 }
 
 function DeleteSunCreature($creature_id, array $not_in)
@@ -43,16 +41,13 @@ function DeleteSunCreature($creature_id, array $not_in)
 	global $sunStore;
 	
 	if(CheckAlreadyImported($creature_id))
-		return "";
+		return;
 	
-	$sql = "";
 	$results = FindAll($sunStore->creature_entry, "entry", $creature_id);
 	foreach($results as $result) {
 		if(!in_array($result->spawnID, $not_in))
-			$sql .= DeleteSunCreatureSpawn($result->spawnID);
+			DeleteSunCreatureSpawn($result->spawnID);
 	}
-	
-	return $sql;
 }
 
 function ImportWaypointScripts($action_id)
@@ -71,12 +66,11 @@ function ImportWaypoints($guid, $path_id, $includeMovementTypeUpdate = true)
 
 function ImportSpawnGroup($guid)
 {
-	global $tcStore, $sunStore;
+	global $tcStore, $sunStore, $file;
 	
 	if(CheckAlreadyImported($guid))
-		return "";
+		return;
 	
-	$sql = "";
 	$results = FindAll($tcStore->spawn_group, "spawnId", $guid);
 	foreach($results as $result) {
 		if($result->spawnType != 0) //creature type
@@ -90,14 +84,13 @@ function ImportSpawnGroup($guid)
 		$sun_spawn_group->groupId = $groupId;
 		
 		array_push($sunStore->spawn_group, $sun_spawn_group);
-		$sql .= WriteObject("spawn_group", $sun_spawn_group);
+		WriteObject("spawn_group", $sun_spawn_group);
 	}
-	return $sql;
 }
 
 function ImportFormation($guid)
 {
-	global $tcStore, $sunStore;
+	global $tcStore, $sunStore, $file;
 	
 	if(!array_key_exists($guid, $tcStore->creature_formations))
 		return;
@@ -119,10 +112,8 @@ function ImportFormation($guid)
 			$sun_formation->leaderGUID = "NULL"; //special on SUN as well
 		
 		$sunStore->creature_formations[$tc_formation->memberGUID] = $sun_formation;
-		$sql .= WriteObject("creature_formations", $sun_formation);
+		WriteObject("creature_formations", $sun_formation);
 	}
-	
-	return $sql;
 }
 
 function WarnPool($guid)
@@ -137,10 +128,10 @@ function WarnPool($guid)
 
 function ImportTCCreature($guid, $patch_min = 0, $patch_max = 10)
 {
-	global $tcStore, $sunStore;
+	global $tcStore, $sunStore, $file;
 	
 	if(CheckAlreadyImported($guid))
-		return "";
+		return;
 	
 	if(array_key_exists($guid, $sunStore->creature)) {
 		echo "ERROR: Trying to import creature with guid {$guid} but creature already exists" . PHP_EOL;
@@ -154,15 +145,13 @@ function ImportTCCreature($guid, $patch_min = 0, $patch_max = 10)
 		$tc_creature_addon = &$tcStore->creature_addon[$guid];
 	}
 	
-	$sql = "";
-	
 	//create creature_entry
 	$sun_creature_entry = new stdClass; //anonymous object
 	$sun_creature_entry->spawnID = $guid;
 	$sun_creature_entry->entry = $tc_creature->id;
 	
 	array_push($sunStore->creature_entry, $sun_creature_entry);
-	$sql .= WriteObject("creature_entry", $sun_creature_entry);
+	WriteObject("creature_entry", $sun_creature_entry);
 	
 	//create creature
 	$sun_creature = new stdClass;
@@ -187,13 +176,13 @@ function ImportTCCreature($guid, $patch_min = 0, $patch_max = 10)
 	$sun_creature->patch_max = $patch_max;
 	
 	$sunStore->creature[$guid] = $sun_creature;
-	$sql .= WriteObject("creature", $sun_creature);
+	WriteObject("creature", $sun_creature);
 	
 	//creature addon
 	if($tc_creature_addon) {
 		$path_id = $tc_creature_addon->path_id;
 		if($path_id) {
-			$sql .= ImportWaypoints($guid, $path_id, false); //$pathID might be changed here
+			ImportWaypoints($guid, $path_id, false); //$pathID might be changed here
 		} else {
 			$path_id = "NULL";
 		}
@@ -209,7 +198,7 @@ function ImportTCCreature($guid, $patch_min = 0, $patch_max = 10)
 		$sun_creature_addon->auras = $tc_creature_addon->auras ? $tc_creature_addon->auras : "NULL";
 		
 		$sunStore->creature_addon[$guid] = $sun_creature_addon;
-		$sql .= WriteObject("creature_addon", $sun_creature_addon);
+		WriteObject("creature_addon", $sun_creature_addon);
 	}
 	
 	//game event creature
@@ -221,26 +210,22 @@ function ImportTCCreature($guid, $patch_min = 0, $patch_max = 10)
 				$sun_game_event_creature->event = $sunEvent;
 				
 				$sunStore->game_event_creature[$guid] = $sun_game_event_creature;
-				$sql .= WriteObject("game_event_creature", $sun_game_event_creature);
+				WriteObject("game_event_creature", $sun_game_event_creature);
 			}
 	}
 	
-	$sql .= ImportSpawnGroup($guid);
-	$sql .= ImportFormation($guid);
+	ImportSpawnGroup($guid);
+	ImportFormation($guid);
 	WarnPool($guid);
-	
-	return $sql;
 }
 
 function CreateReplaceAllCreature($creature_id)
 {
-	global $tcStore, $sunStore;
+	global $tcStore, $sunStore, $file;
 	
 	if(CheckAlreadyImported($creature_id))
-		return "";
-	
-	$sql = "";
-	
+		return;
+		
 	$results = FindAll($tcStore->creature, "id", $creature_id);
 	if(empty($results)) {
 		echo "ERROR: Failed to find any TC creature with id {$creature_id}" . PHP_EOL;
@@ -252,8 +237,7 @@ function CreateReplaceAllCreature($creature_id)
 	foreach($results as $tc_creature) {
 		array_push($tc_guids, $tc_creature->guid);
 		if(!array_key_exists($tc_creature->guid, $sunStore->creature))
-			$sql .= ImportTCCreature($tc_creature->guid);
+			ImportTCCreature($tc_creature->guid);
 	}
-	$sql .= DeleteSunCreature($creature_id, $tc_guids);
-	return $sql;
+	DeleteSunCreature($creature_id, $tc_guids);
 }

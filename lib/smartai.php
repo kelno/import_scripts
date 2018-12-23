@@ -281,19 +281,20 @@ function FindAllSmart($sun, $entryorguid, $source_type)
 
 function DeleteAllSmart($entryorguid, $source_type)
 {
-	global $sunStore;
+	global $sunStore, $file;
 	
 	if(CheckAlreadyImported($entryorguid + $source_type << 28)) //max entry is 30.501.000 (smaller number with 28 bits shift is 268.435.456)
-		return "";
+		return;
 	
 	$sql = "DELETE FROM smart_scripts WHERE entryorguid = {$entryorguid} AND source_type = {$source_type};" . PHP_EOL;
+	fwrite($file, $sql);
 	
 	$results = FindAllSmart(true, $entryorguid, $source_type);
 	foreach($results as $sun_smart) {
 		switch($sun_smart->action_type)
 		{
 			case SmartAction::CALL_TIMED_ACTIONLIST:
-				$sql .= DeleteAllSmart($sun_smart->action_param1, SmartSourceType::timedactionlist);
+				DeleteAllSmart($sun_smart->action_param1, SmartSourceType::timedactionlist);
 				break;
 		}
 	}
@@ -303,16 +304,16 @@ function DeleteAllSmart($entryorguid, $source_type)
 		if($smart_script->entryorguid == $entryorguid && $smart_script->source_type = $source_type)
 			unset($sunStore->smart_scripts[$k]);
 	}
-	
-	return $sql;
 }
 
 function CreateCreatureText($tc_entry)
 {
-	global $tcStore, $sunStore;
+	global $tcStore, $sunStore, $file;
 	
-	if(CheckAlreadyImported($tc_entry))
-		return "-- Creature text {$tc_entry} is already imported" . PHP_EOL;
+	if(CheckAlreadyImported($tc_entry)) {
+		fwrite($file, "-- Creature text {$tc_entry} is already imported" . PHP_EOL);
+		return;
+	}
 	
 	$results = FindAll($tcStore->creature_text, "CreatureID", $tc_entry);
 	if(empty($results)) {
@@ -322,28 +323,28 @@ function CreateCreatureText($tc_entry)
 	}
 	
 	$sql = "DELETE FROM creature_text WHERE CreatureID = {$tc_entry};" . PHP_EOL;
+	fwrite($file, $sql);
+	
 	foreach($results as $text_entry) {
-		
 		if($broadcast_id = $text_entry->BroadcastTextId)
 			CheckBroadcast($broadcast_id);
 		
 		array_push($sunStore->creature_text, $text_entry);
-		$sql .= WriteObject("creature_text", $text_entry); 
+		WriteObject("creature_text", $text_entry); 
 	}
-	
-	return $sql;
 }
 
 function CreateSmartConditions($tc_entry, $source_type)
 {
-	global $sunStore, $tcStore;
+	global $sunStore, $tcStore, $file;
 	
-	if(CheckAlreadyImported($tc_entry + $source_type << 28)) //max entry is 30.501.000 (smaller number with 28 bits shift is 268.435.456)
-		return "-- Smart condition {$tc_entry} {$source_type} is already imported" . PHP_EOL;
+	if(CheckAlreadyImported($tc_entry + $source_type << 28)) { //max entry is 30.501.000 (smaller number with 28 bits shift is 268.435.456)
+		fwrite($file, "-- Smart condition {$tc_entry} {$source_type} is already imported" . PHP_EOL);
+		return;
+	}
 	
 	static $CONDITION_SOURCE_TYPE_SMART_EVENT = 22;
 	
-	$sql = "";
 	foreach($tcStore->conditions as $tc_condition) {
 		if($tc_condition->SourceTypeOrReferenceId != $CONDITION_SOURCE_TYPE_SMART_EVENT)
 		   continue;
@@ -364,22 +365,23 @@ function CreateSmartConditions($tc_entry, $source_type)
 			$sun_condition->ConditionValue1 = ConvertGameEventId($tc_condition->ConditionValue1);
 		}
 			
-		$sql .= WriteObject("conditions", $sun_condition);
+		WriteObject("conditions", $sun_condition);
 	}
-	
-	return $sql;
 }
 
 function CreateWaypoints($path_id)
 {
-	global $tcStore, $sunStore;
+	global $tcStore, $sunStore, $file;
 	
-	if(CheckAlreadyImported($path_id))
-		return "-- Smart Waypoints {$path_id} are already imported" . PHP_EOL;
+	if(CheckAlreadyImported($path_id)) {
+		fwrite($file, "-- Smart Waypoints {$path_id} are already imported" . PHP_EOL);
+		return;
+	}
 	
 	CheckExists($sunStore->waypoints, $tcStore->waypoints, "entry", $path_id);
 	
 	$sql = "DELETE FROM waypoints WHERE entry = {$path_id};" . PHP_EOL;
+	fwrite($file, $sql);
 	RemoveAny($sunStore->waypoints, "entry", $path_id);
 	
 	$results = FindAll($tcStore->waypoints, "entry", $path_id);
@@ -391,18 +393,16 @@ function CreateWaypoints($path_id)
 	
 	foreach($results as $tc_waypoint) {
 		array_push($sunStore->waypoints, $tc_waypoint);
-		$sql .= WriteObject("waypoints", $tc_waypoint); 
+		WriteObject("waypoints", $tc_waypoint); 
 	}
-	
-	return $sql;
 }
 
 function CheckImportCreature($from_entry, $from_id, $creature_id) 
 {
-	global $tcStore, $sunStore;
+	global $tcStore, $sunStore, $file;
 	
 	if(CheckAlreadyImported($creature_id))
-		return "";
+		return;
 	
 	if(!array_key_exists($creature_id, $tcStore->creature_template)) {
 		echo "Smart TC {$from_entry} {$from_id} has SET_DATA on a non existing creature {$creature_id}" . PHP_EOL;
@@ -418,7 +418,8 @@ function CheckImportCreature($from_entry, $from_id, $creature_id)
 	echo "Smart TC {$from_entry} {$from_id} summon/targets creature id {$creature_id}, also importing it. "; //... continue this line later
 	if(CheckIdentical($sunStore->smart_scripts, $tcStore->smart_scripts, "entryorguid", $creature_id)) {
 		echo "Already identical, skipping" . PHP_EOL;
-		return "-- SmartAI for creature {$creature_id} is already in db and identical"; //already imported
+		fwrite($file, "-- SmartAI for creature {$creature_id} is already in db and identical" . PHP_EOL); //already imported
+		return;
 	}
 	
 	$sunAIName = $sunStore->creature_template[$creature_id]->AIName;
@@ -429,13 +430,12 @@ function CheckImportCreature($from_entry, $from_id, $creature_id)
 	else 
 		echo "It currently had AIName '{$sunAIName}' and ScriptName '{$sunScriptName}'" . PHP_EOL;
 
-	$sql = CreateSmartAI($creature_id, SmartSourceType::creature);
-	return $sql;
+	CreateSmartAI($creature_id, SmartSourceType::creature);
 }
 
 function CheckImportGameObject($from_entry, $from_id, $gob_id)
 {
-	global $tcStore, $sunStore;
+	global $tcStore, $sunStore, $file;
 	
 	if(!array_key_exists($gob_id, $tcStore->gameobject_template)) {
 		echo "Smart TC {$from_entry} has SET_DATA on a non existing gameobject {$gob_id}" . PHP_EOL;
@@ -448,12 +448,13 @@ function CheckImportGameObject($from_entry, $from_id, $gob_id)
 		assert(false);
 		exit(1);
 	}
-	$sql = "";
+	
 	echo "Smart TC {$from_entry} targets gameobject id {$gob_id}, also importing it. "; //... continue this line later
 	
 	if(CheckIdentical($sunStore->smart_scripts, $tcStore->smart_scripts, "entryorguid", $gob_id)) {
 		echo "Already identical, skipping" . PHP_EOL;
-		return "-- SmartAI for gob {$gob_id} is already in db and identical"; //already imported
+		fwrite($file, "-- SmartAI for gob {$gob_id} is already in db and identical" . PHP_EOL); //already imported
+		return;
 	}
 	
 	$sunAIName = $sunStore->gameobject_template[$creature_id]->AIName;
@@ -464,16 +465,17 @@ function CheckImportGameObject($from_entry, $from_id, $gob_id)
 	else 
 		echo "It currently had AIName '{$sunAIName}' and ScriptName '{$sunScriptName}" . PHP_EOL;
 
-	$sql .= CreateSmartAI($gob_id, SmartSourceType::gameobject);
-	return $sql;
+	CreateSmartAI($gob_id, SmartSourceType::gameobject);
 }
 
 function CreateSmartAI($tc_entry, $source_type, $action_list_origin = 0)
 {
-	global $tcStore, $sunStore;
+	global $tcStore, $sunStore, $file;
 	
-	if(CheckAlreadyImported($tc_entry + $source_type << 28)) //max entry is 30.501.000 (smaller number with 28 bits shift is 268.435.456)
-		return "-- SmartAI {$tc_entry} {$source_type} is already imported" . PHP_EOL;
+	if(CheckAlreadyImported($tc_entry + $source_type << 28)) { //max entry is 30.501.000 (smaller number with 28 bits shift is 268.435.456)
+		fwrite($file, "-- SmartAI {$tc_entry} {$source_type} is already imported" . PHP_EOL);
+		return;
+	}
 	
 	$sql = "";
 	switch($source_type)
@@ -496,7 +498,8 @@ function CreateSmartAI($tc_entry, $source_type, $action_list_origin = 0)
 			assert(false);
 			exit(1);
 	}
-	$sql .= DeleteAllSmart($tc_entry, $source_type);
+	fwrite($file, $sql);
+	DeleteAllSmart($tc_entry, $source_type);
 	
 	$results = FindAllSmart(false, $tc_entry, $source_type);
 	if(empty($results)) {
@@ -516,12 +519,14 @@ function CreateSmartAI($tc_entry, $source_type, $action_list_origin = 0)
 			case SmartEvent::WAYPOINT_RESUMED:
 			case SmartEvent::WAYPOINT_STOPPED:
 			case SmartEvent::WAYPOINT_ENDED: 
-				if($path_id = $sun_smart_entry->event_param2)
-					$sql .= CreateWaypoints($path_id);
+				if($path_id = $smart_entry->event_param2)
+					CreateWaypoints($path_id);
 				break;
 			case SmartEvent::GOSSIP_SELECT:
-				if($menu_id = $sun_smart_entry->event_param1)
-					$sql .= CreateMenu($menu_id);
+				if($tc_menu_id = $smart_entry->event_param1) {
+					$sun_menu_id = CreateMenu($tc_menu_id);
+					$sun_smart_entry->event_param1 = $sun_menu_id;
+				}
 				break;
 			case SmartEvent::GAME_EVENT_START:
 			case SmartEvent::GAME_EVENT_END:
@@ -536,39 +541,38 @@ function CreateSmartAI($tc_entry, $source_type, $action_list_origin = 0)
 		{
 			case SmartAction::TALK:
 			case SmartAction::SIMPLE_TALK:
-				$sql .= CreateCreatureText($action_list_origin ? $action_list_origin : $tc_entry);
+				CreateCreatureText($action_list_origin ? $action_list_origin : $tc_entry);
 				break;
 			case SmartAction::CALL_TIMED_ACTIONLIST:
-				$sql .= CreateSmartAI($sun_smart_entry->action_param1, SmartSourceType::timedactionlist, $action_list_origin);
+				CreateSmartAI($sun_smart_entry->action_param1, SmartSourceType::timedactionlist, $action_list_origin);
 				break;
 			case SmartAction::CALL_RANDOM_TIMED_ACTIONLIST:			
 				$SMART_AI_MAX_ACTION_PARAM = 6;
 				for($i = 1; $i <= $SMART_AI_MAX_ACTION_PARAM; $i++) {
 					$fieldName = "action_param" . $i;
 					if($action_list = $sun_smart_entry->$fieldName)
-						$sql .= CreateSmartAI($action_list, SmartSourceType::timedactionlist, $action_list_origin);
+						CreateSmartAI($action_list, SmartSourceType::timedactionlist, $action_list_origin);
 				}
 				break;
 	        case SmartAction::CALL_RANDOM_RANGE_TIMED_ACTIONLIST:
 				$min = $sun_smart_entry->action_param1;
 				$max = $sun_smart_entry->action_param2;
 				for($i = $min; $i <= $max; $i++) {
-					$sql .= CreateSmartAI($i, SmartSourceType::timedactionlist, $action_list_origin);
+					CreateSmartAI($i, SmartSourceType::timedactionlist, $action_list_origin);
 				}
 				break;
 			case SmartAction::SEND_GOSSIP_MENU:
-				$menu_id = $sun_smart_entry->action_param1;
-				$sql .= CreateMenu($menu_id); //$menu_id might get changed
-				$sun_smart_entry->action_param1 = $menu_id;
+				$sun_menu_id = CreateMenu($sun_smart_entry->action_param1); 
+				$sun_smart_entry->action_param1 = $sun_menu_id;
 				break;
 			case SmartAction::WP_START:
 				$path_id = $sun_smart_entry->action_param2;
-				$sql .= CreateWaypoints($path_id);
+				CreateWaypoints($path_id);
 				break;
 			case SmartAction::SUMMON_CREATURE:
 				$summonID = $sun_smart_entry->action_param1;
 				//echo "SmartAI {$tc_entry} ${source_type} does summon a creature {$summonID}" . PHP_EOL;
-				$sql .= CheckImportCreature($tc_entry, $sun_smart_entry->id, $summonID);
+				CheckImportCreature($tc_entry, $sun_smart_entry->id, $summonID);
 				break;
 			case SmartAction::SUMMON_CREATURE_GROUP:
 			case SmartAction::GAME_EVENT_STOP:
@@ -601,7 +605,7 @@ function CreateSmartAI($tc_entry, $source_type, $action_list_origin = 0)
 					$name = $tcStore->creature_template[$creatureID]->name;
 					echo "Smart TC {$tc_entry} ${source_type} trying to target a creature guid {$spawnID} (id: {$creatureID}) existing only on TC" . PHP_EOL;
 					echo "/!\ Importing ALL spawns for creature id {$creatureID} ({$name}). (to avoid this, import the creature before rerunning this script)" . PHP_EOL;
-					$sql .= CreateReplaceAllCreature($creatureID);
+					CreateReplaceAllCreature($creatureID);
 				}
 				break;
 			case SmartTarget::GAMEOBJECT_GUID:
@@ -623,7 +627,7 @@ function CreateSmartAI($tc_entry, $source_type, $action_list_origin = 0)
 				case SmartTarget::CREATURE_DISTANCE:
 				case SmartTarget::CLOSEST_CREATURE:
 					$creature_id = $sun_smart_entry->target_param1;
-					$sql .= CheckImportCreature($tc_entry, $sun_smart_entry->id, $creature_id);
+					CheckImportCreature($tc_entry, $sun_smart_entry->id, $creature_id);
 					break;
 				case SmartTarget::CREATURE_GUID:
 					$guid = $sun_smart_entry->target_param1;
@@ -634,14 +638,14 @@ function CreateSmartAI($tc_entry, $source_type, $action_list_origin = 0)
 						exit(1);
 					}
 					foreach($results as $creature_entry)
-						$sql .= CheckImportCreature($tc_entry, $sun_smart_entry->id, $creature_entry->entry);
+						CheckImportCreature($tc_entry, $sun_smart_entry->id, $creature_entry->entry);
 						
 					break;
 				case SmartTarget::GAMEOBJECT_RANGE:
 				case SmartTarget::GAMEOBJECT_DISTANCE:
 				case SmartTarget::CLOSEST_GAMEOBJECT:
 					$gob_id = $sun_smart_entry->target_param1;
-					$sql .= CheckImportGameObject($tc_entry, $sun_smart_entry->id, $gob_id);
+					CheckImportGameObject($tc_entry, $sun_smart_entry->id, $gob_id);
 					break;
 				case SmartTarget::GAMEOBJECT_GUID:
 					$guid = $sun_smart_entry->target_param1;
@@ -650,7 +654,7 @@ function CreateSmartAI($tc_entry, $source_type, $action_list_origin = 0)
 						assert(false);
 						exit(1);
 					}
-					$sql .= CheckImportGameObject($tc_entry, $sun_smart_entry->id, $sunStore->gameobject[$guid]->id);
+					CheckImportGameObject($tc_entry, $sun_smart_entry->id, $sunStore->gameobject[$guid]->id);
 					break;
 				default:
 					break;
@@ -660,8 +664,6 @@ function CreateSmartAI($tc_entry, $source_type, $action_list_origin = 0)
 		array_push($sunStore->smart_scripts, $sun_smart_entry);
 		array_push($sun_smart_entries, $sun_smart_entry);
 	}
-	$sql .= WriteObjects("smart_scripts", $sun_smart_entries); 
-	$sql .= CreateSmartConditions($tc_entry, $source_type);
-		
-	return $sql;
+	WriteObjects("smart_scripts", $sun_smart_entries); 
+	CreateSmartConditions($tc_entry, $source_type);
 }

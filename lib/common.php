@@ -199,7 +199,6 @@ function CreateMenuConditions($tc_menu_id, $sun_menu_id, $tc_text_id, $sun_text_
 	
 	static $CONDITION_SOURCE_TYPE_GOSSIP_MENU = 14;
 	
-	$sql = "";
 	foreach($tcStore->conditions as $tc_condition) {
 		if($tc_condition->SourceTypeOrReferenceId != $CONDITION_SOURCE_TYPE_GOSSIP_MENU)
 		   continue;
@@ -222,10 +221,8 @@ function CreateMenuConditions($tc_menu_id, $sun_menu_id, $tc_text_id, $sun_text_
 			$sun_condition->ConditionValue1 = ConvertGameEventId($tc_condition->ConditionValue1);
 		}
 			
-		$sql .= WriteObject("conditions", $sun_condition);
+		WriteObject("conditions", $sun_condition);
 	}
-	
-	return $sql;
 }
 
 function CreateMenuOptionsConditions($tc_menu_id, $sun_menu_id)
@@ -234,7 +231,6 @@ function CreateMenuOptionsConditions($tc_menu_id, $sun_menu_id)
 	
 	static $CONDITION_SOURCE_TYPE_GOSSIP_MENU_OPTION = 15;
 	
-	$sql = "";
 	foreach($tcStore->conditions as $tc_condition) {
 		if($tc_condition->SourceTypeOrReferenceId != $CONDITION_SOURCE_TYPE_GOSSIP_MENU_OPTION)
 		   continue;
@@ -252,45 +248,45 @@ function CreateMenuOptionsConditions($tc_menu_id, $sun_menu_id)
 			$sun_condition->ConditionValue1 = ConvertGameEventId($tc_condition->ConditionValue1);
 		}
 			
-		$sql .= WriteObject("conditions", $sun_condition);
+		WriteObject("conditions", $sun_condition);
 	}
-	
-	return $sql;
 }
 
 $reusedSunTexts = [];
 
-function CreateText(&$text_id)
+function CreateText($tc_text_id)
 {
-	global $sunStore, $tcStore, $debug, $reusedSunTexts;
+	global $sunStore, $tcStore, $debug, $reusedSunTexts, $file;
 	
-	if(CheckAlreadyImported($text_id))
-		return "-- Text {$text_id} is already imported" . PHP_EOL;
-	
-	if($debug)
-		echo "Importing text $text_id" .PHP_EOL;
-	
-	if(!array_key_exists($text_id, $tcStore->gossip_text))
-	{
-		echo "TextId $text_id does not exists in TC db" . PHP_EOL;
+	if(CheckAlreadyImported($tc_text_id)) {
+		fwrite($file, "-- Text {$tc_text_id} is already imported" . PHP_EOL);
 		return;
 	}
 	
-	$sql = "";
-	$tc_text = &$tcStore->gossip_text[$text_id];
-	if(array_key_exists($text_id, $sunStore->gossip_text)) {
-		$sun_text = $sunStore->gossip_text[$text_id];
+	if($debug)
+		echo "Importing text $tc_text_id" .PHP_EOL;
+	
+	if(!array_key_exists($tc_text_id, $tcStore->gossip_text))
+	{
+		echo "TextId $tc_text_id does not exists in TC db" . PHP_EOL;
+		return;
+	}
+	
+	$tc_text = &$tcStore->gossip_text[$tc_text_id];
+	$sun_text_id = $tc_text_id;
+	if(array_key_exists($tc_text_id, $sunStore->gossip_text)) {
+		$sun_text = $sunStore->gossip_text[$tc_text_id];
 		if($sun_text->text0_0 == $tc_text->text0_0 && $sun_text->text0_1 == $tc_text->text0_1)
 		{
-			array_push($reusedSunTexts, $text_id);
-			return "-- Text {$text_id} already present in Sun DB" . PHP_EOL; //same text, stop here
+			array_push($reusedSunTexts, $tc_text_id);
+			fwrite($file, "-- Text {$tc_text_id} already present in Sun DB" . PHP_EOL); //same text, stop here
 		}
-		$text_id = max(array_keys($sunStore->gossip_text)) + 1;
+		$sun_text_id = max(array_keys($sunStore->gossip_text)) + 1;
 	}
 	
 	//convert TC table to Sun table here
 	$sun_text = new stdClass; //anonymous object
-	$sun_text->ID = $text_id;
+	$sun_text->ID = $sun_text_id;
 	$sun_text->comment = "Imported from TC";
 	for($i = 0; $i < 8; $i++)
 	{
@@ -321,19 +317,19 @@ function CreateText(&$text_id)
 		}
 	}
 	
-	$sunStore->gossip_text[$text_id] = $sun_text;
+	$sunStore->gossip_text[$sun_text_id] = $sun_text;
 	
-	$sql .= WriteObject("gossip_text", $sun_text);
-	
-	return $sql;
+	WriteObject("gossip_text", $sun_text);
 }
 
 function CreatePOI($poi_id)
 {
-	global $sunStore, $tcStore, $debug;
+	global $sunStore, $tcStore, $debug, $file;
 	
-	if(CheckAlreadyImported($poi_id))
-		return "-- POI {$poi_id} is already imported" . PHP_EOL;
+	if(CheckAlreadyImported($poi_id)) {
+		fwrite($file, "-- POI {$poi_id} is already imported" . PHP_EOL);
+		return;
+	}
 	
 	if(!array_key_exists($poi_id, $tcStore->points_of_interest))
 	{
@@ -351,34 +347,32 @@ function CreatePOI($poi_id)
 	
 	$sun_poi = $tc_poi; //simple copy
 	
-	$sql = "";
 	$tc_icon = $tc_poi->Icon;
 	$sun_icon = ConvertPoIIcon($tc_poi->Icon);
 	$sun_poi->Icon = $sun_icon;
-	$sql .= WriteObject("points_of_interest", $sun_poi);
+	WriteObject("points_of_interest", $sun_poi);
 	if($tc_icon != $sun_icon)
 	{
 		$tc_poi->patch = 5; //LK patch
-		$sql .= WriteObject("points_of_interest", $tc_poi);
+		WriteObject("points_of_interest", $tc_poi);
 	} 
 	
 	$sunStore->points_of_interest[$poi_id] = $sun_poi;
-	
-	return $sql;
 }
 
 function CreateMenuOptions($tc_menu_id, $sun_menu_id)
 {
-	global $sunStore, $tcStore, $debug;
+	global $sunStore, $tcStore, $debug, $file;
 	
-	if(CheckAlreadyImported($tc_menu_id))
-		return "-- Menu options for {$tc_menu_id} are already imported" . PHP_EOL;
+	if(CheckAlreadyImported($tc_menu_id)) {
+		fwrite($file, "-- Menu options for {$tc_menu_id} are already imported" . PHP_EOL);
+		return;
+	}
 	
 	$results = FindAll($tcStore->gossip_menu_option, "MenuID", $tc_menu_id);
 	if(empty($results))
 		return; //no menu options found, this is a normal case
 	
-	$sql = "";
 	foreach($results as $tc_option) {
 		
 		if($debug)
@@ -398,16 +392,15 @@ function CreateMenuOptions($tc_menu_id, $sun_menu_id)
 		}
 		$sun_option->OptionType = $tc_option->OptionType;
 		$sun_option->OptionNpcFlag = $tc_option->OptionNpcFlag;
-		$action_menu_id = $tc_option->ActionMenuID;
-		if($action_menu_id) {
-			$sql .= CreateMenu($action_menu_id);
-			$sun_option->ActionMenuID = $action_menu_id;
+		if($tc_option->ActionMenuID) {
+			$sun_menu_id = CreateMenu($tc_option->ActionMenuID);
+			$sun_option->ActionMenuID = $sun_menu_id;
 		} else 
 			$sun_option->ActionMenuID = 'NULL';
 		
 		if($tc_option->ActionPoiID)
 		{
-			$sql .= CreatePOI($tc_option->ActionPoiID);
+			CreatePOI($tc_option->ActionPoiID);
 			$sun_option->ActionPoiID = $tc_option->ActionPoiID; //may be NULL
 		} else {
 			$sun_option->ActionPoiID = 'NULL';
@@ -427,15 +420,13 @@ function CreateMenuOptions($tc_menu_id, $sun_menu_id)
 		
 		array_push($sunStore->gossip_menu_option, $sun_option);
 		
-		$sql .= WriteObject("gossip_menu_option", $sun_option); 
+		WriteObject("gossip_menu_option", $sun_option); 
 	}
-	
-	return $sql;
 }
 
 function DeleteSunMenu($sunMenuID)
 {
-	global $sunStore, $debug;
+	global $sunStore, $debug, $file;
 	
 	if(CheckAlreadyImported($sunMenuID))
 		return "";
@@ -469,16 +460,18 @@ function DeleteSunMenu($sunMenuID)
 			
 		$sql .= "DELETE FROM gossip_text WHERE ID = {$text_id};" . PHP_EOL;
 	}*/
-	return $sql;
+	fwrite($file, $sql);
 }
 
-function CreateMenu(&$menu_id)
+//return sun menu
+function CreateMenu($tc_menu_id)
 {
-	global $sunStore, $tcStore, $debug;
+	global $sunStore, $tcStore, $debug, $file;
 	
-	$tc_menu_id = $menu_id;
-	if(CheckAlreadyImported($tc_menu_id))
-		return "-- Menu {$tc_menu_id} is already imported" . PHP_EOL;
+	if(CheckAlreadyImported($tc_menu_id)) {
+		fwrite($file, "-- Menu {$tc_menu_id} is already imported" . PHP_EOL);
+		return;
+	}
 	
 	$results = FindAll($tcStore->gossip_menu, "MenuID", $tc_menu_id);
 	if(empty($results))
@@ -487,8 +480,6 @@ function CreateMenu(&$menu_id)
 		assert(false);
 		exit(1);
 	}
-	
-	$sql = "";
 	
 	$sun_menu_id = null;
 	if(HasAny($sunStore->gossip_menu, "MenuID", $tc_menu_id))
@@ -502,8 +493,7 @@ function CreateMenu(&$menu_id)
 		if($debug)
 			echo "Importing tc menu {$tc_menu_id} (text {$tc_text_id}) into sun menu {$sun_menu_id}" .PHP_EOL;
 		
-		$sun_text_id = $tc_text_id;
-		$sql .= CreateText($sun_text_id); //sun_text_id might get changed
+		$sun_text_id = CreateText($tc_text_id);
 		
 		$sun_menu = new stdClass; //anonymous object
 		$sun_menu->MenuID = $sun_menu_id;
@@ -511,21 +501,21 @@ function CreateMenu(&$menu_id)
 			
 		array_push($sunStore->gossip_menu, $sun_menu);
 		
-		$sql .= CreateMenuConditions($tc_menu_id, $sun_menu_id, $tc_text_id, $sun_text_id);
-		$sql .= WriteObject("gossip_menu", $sun_menu); 
+		CreateMenuConditions($tc_menu_id, $sun_menu_id, $tc_text_id, $sun_text_id);
+		WriteObject("gossip_menu", $sun_menu); 
 	}
-	$sql .= CreateMenuOptions($tc_menu_id, $sun_menu_id);
-	$sql .= CreateMenuOptionsConditions($tc_menu_id, $sun_menu_id);
+	CreateMenuOptions($tc_menu_id, $sun_menu_id);
+	CreateMenuOptionsConditions($tc_menu_id, $sun_menu_id);
 
-	$menu_id = $sun_menu_id;
-	return $sql;
+	return $sun_menu_id;
 }
 	
 function SetMenuId($entry, $sun_menu_id, bool $set_gossip_flag)
 {
+	global $file;
 	$npcflag = $set_gossip_flag ? "npcflag = (npcflag | 1), " : "";
 	$sql = "UPDATE creature_template SET {$npcflag}gossip_menu_id = {$sun_menu_id} WHERE entry = {$entry};" . PHP_EOL;
-	return $sql;
+	fwrite($file, $sql);
 }
 
 $sunWorld = "world";

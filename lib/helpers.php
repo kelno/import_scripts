@@ -4,13 +4,13 @@
 function WriteObject($tableName, &$object)
 {
 	$array = [ $object ];
-	return WriteObjects($tableName, $array);
+	WriteObjects($tableName, $array);
 }
 
 //Convert objects into insert query
 function WriteObjects($tableName, &$objectArray)
 {
-	global $conn;
+	global $conn, $file;
 	
 	$keys = [];
 	foreach(get_object_vars($objectArray[0]) as $k => $v)
@@ -38,7 +38,7 @@ function WriteObjects($tableName, &$objectArray)
 	}
 	$sql = substr_replace($sql, "", -2); //remove last space+comma
 	$sql .= ";" . PHP_EOL;
-	return $sql;
+	fwrite($file, $sql);
 }
 
 //check if the caller has already called this function with given id
