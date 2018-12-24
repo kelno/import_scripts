@@ -29,7 +29,7 @@ class DBStore
 	public $creature_template = []; //key is entry
 	public $gameobject_template = [];  //key is entry
 	public $conditions = []; //key has NO MEANING
-	public $points_of_interest = []; //key is poi id
+	public $points_of_interest = []; //key has NO MEANING
 	public $smart_scripts = []; //key has NO MEANING
 	public $creature_text = []; //key has NO MEANING
 	public $waypoints = []; //key has NO MEANING
@@ -98,8 +98,7 @@ class DBStore
 		
 		$stmt = $conn->query("SELECT * FROM {$databaseName}.points_of_interest");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		foreach($stmt->fetchAll() as $v)
-			$this->points_of_interest[$v->ID] = $v;
+		$this->points_of_interest = $stmt->fetchAll();
 			
 		$stmt = $conn->query("SELECT * FROM {$databaseName}.smart_scripts");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
@@ -253,52 +252,56 @@ function CreateMenuOptionsConditions($tc_menu_id, $sun_menu_id)
 }
 
 $reusedSunTexts = [];
+$movedTCTexts = [];
 
 function CreateText($tc_text_id)
 {
-	global $sunStore, $tcStore, $debug, $reusedSunTexts, $file;
+	global $sunStore, $tcStore, $debug, $reusedSunTexts, $movedTCTexts, $file;
+	
+	if(array_key_exists($tc_text_id, $movedTCTexts)) {
+		fwrite($file, "-- Text {$tc_text_id} is already imported as " . $movedTCTexts[$tc_text_id] . PHP_EOL);
+		return $movedTCTexts[$tc_text_id];
+	}
 	
 	if(CheckAlreadyImported($tc_text_id)) {
 		fwrite($file, "-- Text {$tc_text_id} is already imported" . PHP_EOL);
-		return;
+		return $tc_text_id;
 	}
 	
 	if($debug)
 		echo "Importing text $tc_text_id" .PHP_EOL;
 	
-	if(!array_key_exists($tc_text_id, $tcStore->gossip_text))
-	{
-		echo "TextId $tc_text_id does not exists in TC db" . PHP_EOL;
-		return;
+	if(!array_key_exists($tc_text_id, $tcStore->gossip_text)) {
+		echo "TextId {$tc_text_id} does not exists in TC db?" . PHP_EOL;
+		assert(false);
+		exit(1);
 	}
 	
 	$tc_text = &$tcStore->gossip_text[$tc_text_id];
 	$sun_text_id = $tc_text_id;
 	if(array_key_exists($tc_text_id, $sunStore->gossip_text)) {
 		$sun_text = $sunStore->gossip_text[$tc_text_id];
-		if($sun_text->text0_0 == $tc_text->text0_0 && $sun_text->text0_1 == $tc_text->text0_1)
-		{
+		if($sun_text->text0_0 == $tc_text->text0_0 && $sun_text->text0_1 == $tc_text->text0_1) {
 			array_push($reusedSunTexts, $tc_text_id);
 			fwrite($file, "-- Text {$tc_text_id} already present in Sun DB" . PHP_EOL); //same text, stop here
+			return $tc_text_id;
 		}
 		$sun_text_id = max(array_keys($sunStore->gossip_text)) + 1;
+		$movedTCTexts[$tc_text_id] = $sun_text_id;
 	}
 	
 	//convert TC table to Sun table here
 	$sun_text = new stdClass; //anonymous object
 	$sun_text->ID = $sun_text_id;
 	$sun_text->comment = "Imported from TC";
-	for($i = 0; $i < 8; $i++)
-	{
-		for($j = 0; $j < 2; $j++)
-		{
+	for($i = 0; $i < 8; $i++) {
+		for($j = 0; $j < 2; $j++) {
 			$fieldName = 'text' . $i . '_' . $j;
 			$sun_text->$fieldName = $tc_text->$fieldName;
 		}
 		
 		$fieldName = 'BroadcastTextID' . $i;
-		if($broadcast_id = $tc_text->$fieldName)
-		{
+		if($broadcast_id = $tc_text->$fieldName) {
 			CheckBroadcast($broadcast_id);
 			$sun_text->$fieldName = $broadcast_id;
 		} else
@@ -310,8 +313,7 @@ function CreateText($tc_text_id)
 		$fieldName = 'Probability' . $i;
 		$sun_text->$fieldName = $tc_text->$fieldName;
 		
-		for($j = 0; $j < 6; $j++)
-		{
+		for($j = 0; $j < 6; $j++) {
 			$fieldName = 'em' . $i . '_' . $j;
 			$sun_text->$fieldName = $tc_text->$fieldName;
 		}
@@ -320,6 +322,7 @@ function CreateText($tc_text_id)
 	$sunStore->gossip_text[$sun_text_id] = $sun_text;
 	
 	WriteObject("gossip_text", $sun_text);
+	return $sun_text_id;
 }
 
 function CreatePOI($poi_id)
@@ -331,33 +334,33 @@ function CreatePOI($poi_id)
 		return;
 	}
 	
-	if(!array_key_exists($poi_id, $tcStore->points_of_interest))
-	{
-		echo "PoI $poi_id does not exists in TC db" . PHP_EOL;
-		return;
+	$results = FindAll($tcStore->points_of_interest, "ID", $poi_id);
+	if(count($results) != 1) {
+		echo "TC points_of_interest has 0 or > 1 PoI for id {$poi_id}" . PHP_EOL;
+		assert(false);
+		exit(1);
 	}
 	
-	$tc_poi = &$tcStore->points_of_interest[$poi_id];
-	//no id change here, sun has no poi to check
-	if(array_key_exists($poi_id, $sunStore->points_of_interest))
-	{
-		echo "Sun already has poi $poi_id ?" . PHP_EOL;
+	$tc_poi = $results[0];
+	
+	//we assume if we have a poi with this id, it's already the same
+	$results = FindAll($sunStore->points_of_interest, "ID", $poi_id);
+	if(count($results) > 0) {
+		fwrite($file, "-- POI {$poi_id} already present in sun db" . PHP_EOL);
 		return;
 	}
 	
 	$sun_poi = $tc_poi; //simple copy
-	
-	$tc_icon = $tc_poi->Icon;
-	$sun_icon = ConvertPoIIcon($tc_poi->Icon);
-	$sun_poi->Icon = $sun_icon;
+	$sun_poi->Icon = ConvertPoIIcon($tc_poi->Icon);
 	WriteObject("points_of_interest", $sun_poi);
-	if($tc_icon != $sun_icon)
-	{
-		$tc_poi->patch = 5; //LK patch
-		WriteObject("points_of_interest", $tc_poi);
-	} 
-	
 	$sunStore->points_of_interest[$poi_id] = $sun_poi;
+	
+	if($tc_poi->Icon != $sun_poi->Icon) {
+		$sun_poi_tlk = $tc_poi;
+		$sun_poi_tlk->patch = 5; //LK patch
+		WriteObject("points_of_interest", $sun_poi_tlk);
+		$sunStore->points_of_interest[$poi_id] = $sun_poi_tlk;
+	} 
 }
 
 function CreateMenuOptions($tc_menu_id, $sun_menu_id)
@@ -398,8 +401,7 @@ function CreateMenuOptions($tc_menu_id, $sun_menu_id)
 		} else 
 			$sun_option->ActionMenuID = 'NULL';
 		
-		if($tc_option->ActionPoiID)
-		{
+		if($tc_option->ActionPoiID) {
 			CreatePOI($tc_option->ActionPoiID);
 			$sun_option->ActionPoiID = $tc_option->ActionPoiID; //may be NULL
 		} else {
@@ -429,7 +431,7 @@ function DeleteSunMenu($sunMenuID)
 	global $sunStore, $debug, $file;
 	
 	if(CheckAlreadyImported($sunMenuID))
-		return "";
+		return;
 	
 	//only delete if only one menu is found
 	$results = FindAll($sunStore->creature_template, "gossip_menu_id", $sunMenuID);
@@ -439,9 +441,8 @@ function DeleteSunMenu($sunMenuID)
 		exit(1);
 	}
 	
-	if(sizeof($results) > 1) {
+	if(sizeof($results) > 1)
 		return; //more than one ref to this menu, skip
-	}
 	
 	$sql = "DELETE FROM gossip_menu WHERE MenuID = {$sunMenuID};" . PHP_EOL;
 	
@@ -474,8 +475,7 @@ function CreateMenu($tc_menu_id)
 	}
 	
 	$results = FindAll($tcStore->gossip_menu, "MenuID", $tc_menu_id);
-	if(empty($results))
-	{
+	if(empty($results)) {
 		echo "Failed to find TC menu {$tc_menu_id}" . PHP_EOL;
 		assert(false);
 		exit(1);
@@ -494,6 +494,7 @@ function CreateMenu($tc_menu_id)
 			echo "Importing tc menu {$tc_menu_id} (text {$tc_text_id}) into sun menu {$sun_menu_id}" .PHP_EOL;
 		
 		$sun_text_id = CreateText($tc_text_id);
+		assert($sun_text_id != '' && $sun_text_id > 0);
 		
 		$sun_menu = new stdClass; //anonymous object
 		$sun_menu->MenuID = $sun_menu_id;
