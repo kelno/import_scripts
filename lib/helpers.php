@@ -1,17 +1,15 @@
 <?php
 
 //Convert object into insert query
-function WriteObject($tableName, &$object)
+function WriteObject(&$conn, $tableName, &$object)
 {
 	$array = [ $object ];
-	WriteObjects($tableName, $array);
+	return WriteObjects($conn, $tableName, $array);
 }
 
 //Convert objects into insert query
-function WriteObjects($tableName, &$objectArray)
+function WriteObjects(&$conn, $tableName, &$objectArray)
 {
-	global $conn, $file;
-	
 	$keys = [];
 	foreach(get_object_vars($objectArray[0]) as $k => $v)
 		array_push($keys, $k);
@@ -38,7 +36,7 @@ function WriteObjects($tableName, &$objectArray)
 	}
 	$sql = substr_replace($sql, "", -2); //remove last space+comma
 	$sql .= ";" . PHP_EOL;
-	fwrite($file, $sql);
+	return $sql;
 }
 
 //check if the caller has already called this function with given id
@@ -60,19 +58,20 @@ function CheckAlreadyImported($id)
 
 function HasAny(&$container, $keyname, $value)
 {
-	foreach($container as $v) {
-		if($v->$keyname == $value)
+	foreach(array_keys($container) as $key)
+		if($container[$key]->$keyname == $value)
 			return true;
-	}
+		
 	return false;
 }
 
 function GetHighest(&$container, $keyname)
 {
 	$highest = 0;
-	foreach($container as $v) {
-		$highest = max($highest, $v->$keyname);
-	}
+	
+	foreach(array_keys($container) as $key)
+		$highest = max($container[$key]->$keyname, $highest);
+	
 	return $highest;
 }
 
@@ -83,49 +82,23 @@ function CheckIdentical(&$sunContainer, &$tcContainer, $keyname, $value)
 	return $sunResults == $tcResults; //does this work okay? This is supposed to compare keys + values, but we don't care about keys.
 }
 
-/* This test pass if:
-- sunContainer does not contain key with this value
-- sunContainer does contain key with value but has the same as tcContainer
-Else, crash everything
-*/
-function CheckExists(&$sunContainer, &$tcContainer, $keyname, $value)
-{
-	$sunResults = FindAll($sunContainer, $keyname, $value);
-	if(empty($sunResults))
-		return;
-	
-	$tcResults = FindAll($tcContainer, $keyname, $value);
-	if(empty($tcResults)) {
-		echo "Checked for existence but TC has no value for this container?" . PHP_EOL;
-		assert(false);
-		exit(1);
-	}
-	
-	if($sunResults != $tcResults) { //does this work okay? This is supposed to compare keys + values, but we don't care about keys.
-		echo "TC and SUN containers have different results counts for value {$value}" . PHP_EOL;
-		assert(false);
-		exit(1);
-	}
-	
-	//OK
-	return;
-}
-
 function FindAll(&$container, $keyname, $value)
 {
 	$results = [];
-	foreach($container as $v) {
-		if($v->$keyname == $value)
-			array_push($results, $v);
+	
+	foreach(array_keys($container) as $key) {
+		if($container[$key]->$keyname == $value)
+			array_push($results, $container[$key]);
 	}
+			
 	return $results;
 }
 
 function RemoveAny(&$container, $keyname, $value)
 {
-	foreach($container as $k => $v) {
-		if($v->$keyname == $value)
-			unset($container[$k]);
+	foreach(array_keys($container) as $key) {
+		if($container[$key]->$keyname == $value)
+			unset($container[$key]);
 	}
 }
 

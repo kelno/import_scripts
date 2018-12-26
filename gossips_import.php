@@ -2,6 +2,7 @@
 
 include_once(__DIR__ . '/lib/common.php');
 include_once(__DIR__ . '/lib/smartai.php');
+include_once(__DIR__ . '/config.php');
 
 /*
 -> Altered tc.creature_template table to add an 'import' column (see enum below)
@@ -21,9 +22,18 @@ IGNORE: ignore
 (check for MAIN in code if you're looking where to start)
 */
 
-$file = fopen(__DIR__."/gossips.sql", "w");
+$output_filename = "gossips.sql";
+$file = fopen($output_filename, "w");
 if (!$file)
-	die("Couldn't open gossips.txt");
+	die("Couldn't open {$output_filename}");
+
+$start = microtime(true);
+	
+$debug = false;
+$converter = new DBConverter($file, $debug);
+
+$conn = new PDO("mysql:host=localhost", $login, $password);
+$conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
 // MAIN
 $query = "SELECT tc.entry, tc.import, tc.gossip_menu_id, tc.name, tc.npcflag, sun.gossip_menu_id as sunMenuID
@@ -34,33 +44,37 @@ ORDER BY tc.gossip_menu_id ";
 //echo $query . PHP_EOL;
 $stmt = $conn->query($query);
 $stmt->setFetchMode(PDO::FETCH_ASSOC);
-
+$start = microtime(true);
+		
 echo "Importing... " . PHP_EOL;
-$sql = "";
 foreach($stmt->fetchAll() as $v) {
-	$sql .= "-- Importing creature gossip with entry {$v['entry']} ({$v['name']}) with import type {$v['import']}" . PHP_EOL;
+	fwrite($file, "-- Importing creature gossip with entry {$v['entry']} ({$v['name']}) with import type {$v['import']}" . PHP_EOL);
 	switch($v["import"])
 	{
 		case "SMART": //GOSSIP+SMART
-			CreateSmartAI($v['entry'], SmartSourceType::creature);
+			$converter->CreateSmartAI($v['entry'], SmartSourceType::creature);
 			//nobreak
 		case "GOSSIP": 
 			$setflag = $v['npcflag'] & 1;
 			$menu_id = $v['gossip_menu_id'];
-			CreateMenu($menu_id); //$menu_id might get changed here
-			SetMenuId($v['entry'], $menu_id, $setflag);
+			$converter->CreateMenu($menu_id); //$menu_id might get changed here
+			$converter->SetMenuId($v['entry'], $menu_id, $setflag);
 			if($current_sun_menu_id = $v['sunMenuID'])
-				DeleteSunMenu($current_sun_menu_id);
+				$converter->DeleteSunMenu($current_sun_menu_id);
 	
 			break;
 		default:
 			echo "ERROR: Non handled enum value: " . $v["import"] . PHP_EOL;
 			exit(1);
 	}
-	$sql .= PHP_EOL . PHP_EOL;
+	$duration = microtime(true) - $start;
+	$duration = number_format($duration, 4);
+	if($debug)
+		echo "Duration: {$duration}s" . PHP_EOL;
+	fwrite($file, PHP_EOL . PHP_EOL);
 }
 
-fwrite($file, $sql);
 fclose($file);
 
-echo "Finished!" . PHP_EOL;
+$duration = microtime(true) - $start;
+echo "Finished in {$duration}s" . PHP_EOL;	
