@@ -473,8 +473,8 @@ class DBConverter
 			$sun_option->OptionType = $tc_option->OptionType;
 			$sun_option->OptionNpcFlag = $tc_option->OptionNpcFlag;
 			if($tc_option->ActionMenuID) {
-				$sun_menu_id = $this->CreateMenu($tc_option->ActionMenuID);
-				$sun_option->ActionMenuID = $sun_menu_id;
+				$new_sun_menu_id = $this->CreateMenu($tc_option->ActionMenuID);
+				$sun_option->ActionMenuID = $new_sun_menu_id;
 			} else 
 				$sun_option->ActionMenuID = 'NULL';
 			
@@ -551,7 +551,7 @@ class DBConverter
 		
 		if(CheckAlreadyImported($tc_menu_id)) {
 			fwrite($this->file, "-- Menu {$tc_menu_id} is already imported" . PHP_EOL);
-			return;
+			return $tc_menu_id;
 		}
 		
 		$this->timelol("CM1");

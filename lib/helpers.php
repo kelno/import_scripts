@@ -24,7 +24,7 @@ function WriteObjects(&$conn, $tableName, &$objectArray)
 	foreach($objectArray as $object) {
 		$sql .= "(";
 		foreach(get_object_vars($object) as $v) {
-			if($v == "NULL") {
+			if($v === "NULL") {
 				$sql .= "NULL, ";
 			} else {
 				$v = $conn->quote($v);

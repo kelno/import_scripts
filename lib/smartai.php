@@ -1,7 +1,6 @@
 <?php
 
 include_once(__DIR__ . '/common.php');
-include_once(__DIR__ . '/creature.php');
 
 abstract class SmartSourceType
 {

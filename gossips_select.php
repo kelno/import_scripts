@@ -3,16 +3,22 @@
 include_once(__DIR__ . '/lib/common.php');
 include_once(__DIR__ . '/lib/smartai.php');
 
+$conn = new PDO("mysql:host=localhost", $login, $password);
+$conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+$file = null;
+$converter = new DBConverter($file, false);
+
 function PrintOptions($menu_id, $sun)
 {
-	global $tcStore, $sunStore;
+	global $converter;
 	
 	$subMenusIds = [];
 	$results = [];
 	if($sun)
-		$results = FindAll($sunStore->gossip_menu_option, "MenuID", $menu_id);
+		$results = FindAll($converter->sunStore->gossip_menu_option, "MenuID", $menu_id);
 	else
-		$results = FindAll($tcStore->gossip_menu_option, "MenuID", $menu_id);
+		$results = FindAll($converter->tcStore->gossip_menu_option, "MenuID", $menu_id);
 	
 	if(empty($results))
 		return [];
@@ -34,9 +40,9 @@ function PrintOptions($menu_id, $sun)
 
 function PrintText($text_id, $sun)
 {
-	global $tcStore, $sunStore;
+	global $converter;
 	
-	$text = ($sun ? $sunStore : $tcStore)->gossip_text[$text_id];
+	$text = ($sun ? $converter->sunStore : $converter->tcStore)->gossip_text[$text_id];
 	echo "text0_0: {$text->text0_0}" . PHP_EOL;
 	if($text->text0_1 != "" && $text->text0_0 != $text->text0_1)
 		echo "text0_1: {$text->text0_1}" . PHP_EOL;
@@ -50,11 +56,11 @@ function PrintCondition(&$condition)
 
 function PrintMenuConditions($menu_id, $text_id, $sun)
 {
-	global $tcStore, $sunStore;
+	global $converter;
 	
 	static $CONDITION_SOURCE_TYPE_GOSSIP_MENU = 14;
 	
-	foreach(($sun ? $sunStore->conditions : $tcStore->conditions) as $condition) {
+	foreach(($sun ? $converter->sunStore->conditions : $converter->tcStore->conditions) as $condition) {
 		if($condition->SourceTypeOrReferenceId != $CONDITION_SOURCE_TYPE_GOSSIP_MENU)
 		   continue;
 		   
@@ -67,11 +73,11 @@ function PrintMenuConditions($menu_id, $text_id, $sun)
 
 function PrintOptionConditions($menu_id, $option_id, $sun)
 {
-	global $tcStore, $sunStore;
+	global $converter;
 	
 	static $CONDITION_SOURCE_TYPE_GOSSIP_MENU_OPTION = 15;
 	
-	foreach(($sun ? $sunStore->conditions : $tcStore->conditions) as $condition) {
+	foreach(($sun ? $converter->sunStore->conditions : $converter->tcStore->conditions) as $condition) {
 		if($condition->SourceTypeOrReferenceId != $CONDITION_SOURCE_TYPE_GOSSIP_MENU_OPTION)
 		   continue;
 		   
@@ -85,7 +91,7 @@ function PrintOptionConditions($menu_id, $option_id, $sun)
 $alreadyPrinted = [ ];
 function PrintMenu($menu_id, bool $sun, bool $callFromMain = false)
 {
-	global $tcStore, $sunStore, $alreadyPrinted;
+	global $converter, $alreadyPrinted;
 	
 	if($callFromMain)
 		$alreadyPrinted = [ ]; //reset
@@ -97,9 +103,9 @@ function PrintMenu($menu_id, bool $sun, bool $callFromMain = false)
 	
 	$results = [];
 	if($sun)
-		$results = FindAll($sunStore->gossip_menu, "MenuID", $menu_id);
+		$results = FindAll($converter->sunStore->gossip_menu, "MenuID", $menu_id);
 	else
-		$results = FindAll($tcStore->gossip_menu,  "MenuID", $menu_id);
+		$results = FindAll($converter->tcStore->gossip_menu,  "MenuID", $menu_id);
 	
 	if(empty($results))
 	{
@@ -136,8 +142,9 @@ function SetImport($creatureId, $import)
 $query = "SELECT tc.entry, tc.gossip_menu_id, tc.name, tc.npcflag, sun.gossip_menu_id as sunmenuid, sun.ScriptName as sunScriptName, sun.AIName as sunAIName, tc.ScriptName as tcScriptName, tc.AIName as tcAIName
 FROM {$tcWorld}.creature_template tc 
 JOIN {$sunWorld}.creature_template sun ON sun.entry = tc.entry
-WHERE tc.gossip_menu_id != 0 AND tc.import IS NULL AND sun.gossip_menu_id IS NULL AND sun.ScriptName = '' AND sun.AIName = '' AND tc.AIName = 'SmartAI'
+WHERE tc.gossip_menu_id != 0 AND tc.import IS NULL AND sun.gossip_menu_id IS NULL AND (sun.ScriptName = '' AND sun.AIName = '' OR sun.entry = 16159) AND tc.AIName = 'SmartAI'
 ORDER BY tc.gossip_menu_id ";
+//
 //echo $query . PHP_EOL;
 $stmt = $conn->query($query);
 $stmt->setFetchMode(PDO::FETCH_ASSOC);
@@ -145,13 +152,13 @@ $stmt->setFetchMode(PDO::FETCH_ASSOC);
 $separator = "---------------------------------------" .PHP_EOL;
 
 echo "READY TO WORK" . PHP_EOL . PHP_EOL;
-$auto_import = true;
+$auto_import = false;
 
 foreach($stmt->fetchAll() as $v) {
 	echo "Creature {$v['entry']} - {$v['name']}:" . PHP_EOL . PHP_EOL;
 	
 	if($auto_import) {
-		SetImport($v['entry'], "SMART"); 
+		SetImport($v['entry'], "GOSSIP"); 
 		continue;
 	}
 	PrintMenu($v['gossip_menu_id'], false, true);
