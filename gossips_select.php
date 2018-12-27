@@ -42,7 +42,11 @@ function PrintText($text_id, $sun)
 {
 	global $converter;
 	
-	$text = ($sun ? $converter->sunStore : $converter->tcStore)->gossip_text[$text_id];
+	if($sun)
+		$text = $converter->sunStore->gossip_text[$text_id];
+	else
+		$text = $converter->tcStore->gossip_text[$text_id];
+		
 	echo "text0_0: {$text->text0_0}" . PHP_EOL;
 	if($text->text0_1 != "" && $text->text0_0 != $text->text0_1)
 		echo "text0_1: {$text->text0_1}" . PHP_EOL;
@@ -142,7 +146,7 @@ function SetImport($creatureId, $import)
 $query = "SELECT tc.entry, tc.gossip_menu_id, tc.name, tc.npcflag, sun.gossip_menu_id as sunmenuid, sun.ScriptName as sunScriptName, sun.AIName as sunAIName, tc.ScriptName as tcScriptName, tc.AIName as tcAIName
 FROM {$tcWorld}.creature_template tc 
 JOIN {$sunWorld}.creature_template sun ON sun.entry = tc.entry
-WHERE tc.gossip_menu_id != 0 AND tc.import IS NULL AND sun.gossip_menu_id IS NULL AND (sun.ScriptName = '' AND sun.AIName = '' OR sun.entry = 16159) AND tc.AIName = 'SmartAI'
+WHERE tc.gossip_menu_id != 0 AND tc.import IS NULL AND sun.gossip_menu_id IS NULL
 ORDER BY tc.gossip_menu_id ";
 //
 //echo $query . PHP_EOL;
@@ -168,7 +172,7 @@ foreach($stmt->fetchAll() as $v) {
 	{
 		echo "WARNING: TC creature has an AIName: {$v['tcAIName']}" . PHP_EOL;
 		if($v['tcAIName'] == "SmartAI") {
-			$results = FindAllSmart(false, $v['entry'], SmartSourceType::creature);
+			$results = $converter->FindAllSmart(false, $v['entry'], SmartSourceType::creature);
 			if(empty($results))
 				echo "!!! But there is no smart data for this creature..." .PHP_EOL;
 		}
@@ -190,7 +194,7 @@ foreach($stmt->fetchAll() as $v) {
 	{
 		$skip = false;
 		echo PHP_EOL;
-		$line = readline("Import? ([Y]es/[S]martAI/[N]o/[S]kip): ");
+		$line = readline("Import? ([Y]es/[S]martAI/[N]o/[L]ater): ");
 		switch($line)
 		{
 			case "Y": 
@@ -201,7 +205,7 @@ foreach($stmt->fetchAll() as $v) {
 			case "S": 
 				SetImport($v['entry'], "SMART"); 
 				echo "Set to importing." . PHP_EOL;
-				if(empty(FindAllSmart(false, $v['entry'], SmartSourceType::creature))) {
+				if(empty($converter->FindAllSmart(false, $v['entry'], SmartSourceType::creature))) {
 					echo "WARNING: Did not find any TC smartAI for this creature. If you intended to just import gossip:" . PHP_EOL;
 					echo "UPDATE {$tcWorld}.creature_template SET import = 'GOSSIP' WHERE entry = {$v['entry']};" . PHP_EOL;
 				}
@@ -212,7 +216,7 @@ foreach($stmt->fetchAll() as $v) {
 				echo "Set to ignoring." . PHP_EOL;
 				echo $separator;
 				break;
-			case "S": 
+			case "L": 
 				$skip = true; 
 				echo "Skipping this one." . PHP_EOL;
 				echo $separator;

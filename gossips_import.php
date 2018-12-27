@@ -57,6 +57,11 @@ foreach($stmt->fetchAll() as $v) {
 		case "GOSSIP": 
 			$setflag = $v['npcflag'] & 1;
 			$menu_id = $v['gossip_menu_id'];
+			if($menu_id == 0) {
+				echo "No menu for creature {$v['entry']}" . PHP_EOL;
+				assert(false);
+				exit(1);
+			}
 			$new_menu_id = $converter->CreateMenu($menu_id);
 			$converter->SetMenuId($v['entry'], $new_menu_id, $setflag);
 			if($current_sun_menu_id = $v['sunMenuID'])

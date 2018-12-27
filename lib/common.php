@@ -217,7 +217,7 @@ class DBConverter
 		}
 		
 		if($sunResults != $tcResults) { //does this work okay? This is supposed to compare keys + values, but we don't care about keys.
-			echo "TC and SUN containers have different results counts for value {$value}" . PHP_EOL;
+			echo "TC and SUN containers have different results for table {$tableName} and value {$value}" . PHP_EOL;
 			assert(false);
 			exit(1);
 		}
@@ -493,7 +493,10 @@ class DBConverter
 			} else {
 				$sun_option->BoxBroadcastTextID = 'NULL';
 			}
-			if (strpos($sun_option->OptionText, 'Dual Talent') !== false) {
+			if (   (strpos($sun_option->OptionText, 'Dual Talent') !== false)
+				|| ($sun_option->ActionPoiID > 0 && strpos($sun_option->OptionText, 'Inscription') !== false)
+				|| (strpos($sun_option->OptionText, 'Lexicon of') !== false)
+				) {
 				$sun_option->patch_min = 5; //TLK
 			}
 			
@@ -754,17 +757,21 @@ class DBConverter
 			return;
 		}
 		
-		$this->CheckExists("waypoints", "entry", $path_id);
-		
-		$sql = "DELETE FROM waypoints WHERE entry = {$path_id};" . PHP_EOL;
-		fwrite($this->file, $sql);
-		RemoveAny($this->sunStore->waypoints, "entry", $path_id);
-		
 		$results = FindAll($this->tcStore->waypoints, "entry", $path_id);
 		if(empty($results)) {
 			echo "ERROR: Could not find TC waypoints {$path_id}" . PHP_EOL;
 			assert(false);
 			exit(1);
+		}
+		
+		$sunResults = FindAll($this->sunStore->waypoints, "entry", $path_id);
+		if(!empty($sunResults)) {
+			if($sunResults != $results) //does this work okay? This is supposed to compare keys + values, but we don't care about keys.
+				echo "TC and SUN table have different smart waypoints for path_id {$path_id}, overwritting with TC ones ". PHP_EOL;
+				
+			$sql = "DELETE FROM waypoints WHERE entry = {$path_id};" . PHP_EOL;
+			fwrite($this->file, $sql);
+			RemoveAny($this->sunStore->waypoints, "entry", $path_id);
 		}
 		
 		foreach($results as $tc_waypoint) {
