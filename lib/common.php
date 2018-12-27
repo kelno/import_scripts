@@ -433,13 +433,13 @@ class DBConverter
 		$sun_poi = $tc_poi; //simple copy
 		$sun_poi->Icon = ConvertPoIIcon($tc_poi->Icon);
 		fwrite($this->file, WriteObject($this->conn, "points_of_interest", $sun_poi));
-		$this->sunStore->points_of_interest[$poi_id] = $sun_poi;
+			array_push($this->sunStore->points_of_interest, $sun_poi);
 		
 		if($tc_poi->Icon != $sun_poi->Icon) {
 			$sun_poi_tlk = $tc_poi;
 			$sun_poi_tlk->patch = 5; //LK patch
 			fwrite($this->file, WriteObject($this->conn, "points_of_interest", $sun_poi_tlk));
-			$this->sunStore->points_of_interest[$poi_id] = $sun_poi_tlk;
+			array_push($this->sunStore->points_of_interest, $sun_poi_tlk);
 		} 
 	}
 
