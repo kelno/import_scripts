@@ -1262,6 +1262,8 @@ class DBConverter
 		}
 	}
 
+	private $delayedFormationsImports = "";
+	
 	function ImportFormation($guid)
 	{
 		if(!array_key_exists($guid, $this->tcStore->creature_formations))
@@ -1272,9 +1274,32 @@ class DBConverter
 		if(!array_key_exists($leaderGUID, $this->tcStore->creature_formations))
 			return;
 		
+		if(array_key_exists($guid, $this->sunStore->creature_formations)) {
+			$sun_formation = $this->sunStore->creature_formations[$guid];
+			if($sun_formation != $tc_formation) {
+				//a formation already exists for this creature but is not the same...
+				fwrite($this->file, "DELETE FROM creature_formations WHERE memberGUID = {$guid};" . PHP_EOL);
+				unset($this->sunStore->creature_formations[$guid]);
+			} else {
+				fwrite($this->file, "-- Formation for creature {$guid} already in db" . PHP_EOL);
+				return;
+			}
+		}
+		
+		if(CheckAlreadyImported($leaderGUID))
+			return;
+		
 		$results = FindAll($this->tcStore->creature_formations, "leaderGUID", $leaderGUID);
 		foreach($results as $tc_formation) {
-			$sun_formation = new stdClass; //anonymous object
+				
+			if(!array_key_exists($tc_formation->memberGUID, $this->sunStore->creature)) {
+				//we don't have that leader yet
+				fwrite($this->file, "-- Trying to import formation for creature {$tc_formation->memberGUID}, but the creature isn't in our db yet. Importing it now" . PHP_EOL);
+				$this->ImportTCCreature($tc_formation->memberGUID);
+				//this call won't import the formation because of the CheckAlreadyImported before
+			}
+			
+			$sun_formation = new stdClass; 
 			$sun_formation->leaderGUID = $leaderGUID;
 			$sun_formation->memberGUID = $tc_formation->memberGUID;
 			$sun_formation->groupAI = 2;//alway 2, we don't use the same AI system than TC
@@ -1283,8 +1308,8 @@ class DBConverter
 			if($sun_formation->leaderGUID == $sun_formation->memberGUID)
 				$sun_formation->leaderGUID = "NULL"; //special on SUN as well
 			
-			$this->sunStore->creature_formations[$tc_formation->memberGUID] = $sun_formation;
-			fwrite($this->file, WriteObject($this->conn, "creature_formations", $sun_formation));
+			$this->sunStore->creature_formations[$sun_formation->memberGUID] = $sun_formation;
+			$this->delayedFormationsImports .= WriteObject($this->conn, "creature_formations", $sun_formation);
 		}
 	}
 
@@ -1324,6 +1349,7 @@ class DBConverter
 		fwrite($this->file, WriteObject($this->conn, "pool_creature", $pool_creature));
 	}
 
+	//don't forget to call HandleFormations after this
 	function ImportTCCreature($guid, $patch_min = 0, $patch_max = 10)
 	{
 		if(CheckAlreadyImported($guid))
@@ -1347,6 +1373,21 @@ class DBConverter
 		$sun_creature_entry->spawnID = $guid;
 		$sun_creature_entry->entry = $tc_creature->id;
 		
+		$tlk_creature = !array_key_exists($tc_creature->id, $this->sunStore->creature_template);
+		if($tlk_creature) {
+			//create a dummy tlk creature if needed to ensure FK are correct
+			assert(array_key_exists($tc_creature->id, $this->tcStore->creature_template));
+			fwrite($this->file, "-- Importing dummy TLK creature" . PHP_EOL);
+			$sun_creature_template = new stdClass;
+			$sun_creature_template->entry = $tc_creature->id;
+			$sun_creature_template->patch = 5;
+			$sun_creature_template->name = "Dummy TLK creature - " . $this->tcStore->creature_template[$tc_creature->id]->name;
+			$this->sunStore->creature_template[$sun_creature_template->entry] = $sun_creature_template;
+			fwrite($this->file, WriteObject($this->conn, "creature_template", $sun_creature_template));
+			if($patch_min < 5)
+				$patch_min = 5;
+		}
+		
 		array_push($this->sunStore->creature_entry, $sun_creature_entry);
 		fwrite($this->file, WriteObject($this->conn, "creature_entry", $sun_creature_entry));
 		
@@ -1369,7 +1410,7 @@ class DBConverter
 		$sun_creature->MovementType = $tc_creature->MovementType;
 		$sun_creature->unit_flags = $tc_creature->unit_flags;
 		$sun_creature->pool_id = 0;
-		if($sun_creature->map > 593) //not sure about id here
+		if($sun_creature->map > 593) //First TLK map. Not sure about id here
 			$patch_min = 5;
 		$sun_creature->patch_min = $patch_min;
 		$sun_creature->patch_max = $patch_max;
@@ -1402,8 +1443,11 @@ class DBConverter
 		
 		//game event creature
 		if(array_key_exists($guid, $this->tcStore->game_event_creature)) {
-			$this->sunStore->game_event_creature[$guid] = $this->tcStore->game_event_creature[$guid];
-			fwrite($this->file, WriteObject($this->conn, "game_event_creature", $this->sunStore->game_event_creature[$guid]));
+			$sun_gec = new stdClass;
+			$sun_gec->event = $this->tcStore->game_event_creature[$guid]->eventEntry;
+			$sun_gec->guid = $guid;
+			$this->sunStore->game_event_creature[$guid] = $sun_gec;
+			fwrite($this->file, WriteObject($this->conn, "game_event_creature", $sun_gec));
 		}
 		
 		$this->ImportSpawnGroup($guid);
@@ -1430,5 +1474,18 @@ class DBConverter
 				$this->ImportTCCreature($tc_creature->guid, $patch_min, $patch_max);
 		}
 		$this->DeleteSunCreatures($creature_id, $tc_guids);
+		$this->HandleFormations();
+	}
+	
+
+	//Write formations stored in $this->delayedFormationsImports
+	function HandleFormations()
+	{
+		if(!$this->delayedFormationsImports)
+			return;
+		
+		fwrite($this->file, "-- Formations" . PHP_EOL);
+		fwrite($this->file, $this->delayedFormationsImports);
+		$this->delayedFormationsImports = "";
 	}
 };
