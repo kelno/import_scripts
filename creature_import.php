@@ -466,7 +466,7 @@ function Import(&$v, $patch_min = 0, $patch_max = 10)
 			$pathID = "NULL";
 
 		$auras = $v['auras'] ? $v['auras'] : "NULL";
-		$sql .= "INSERT INTO creature_addon (spawnID, path_id, mount, bytes0, bytes1, bytes2, emote, auras) VALUES ({$tcGUID}, {$pathID}, {$v['mount']}, 0, {$v['bytes1']}, {$v['bytes2']}, {$v['emote']}, {$auras});" . PHP_EOL;
+		$sql .= "INSERT INTO creature_addon (spawnID, path_id, mount, bytes0, bytes1, bytes2, emote, auras) VALUES ({$tcGUID}, {$pathID}, {$v['mount']}, 0, {$v['bytes1']}, {$v['bytes2']}, {$v['emote']}, '{$auras}');" . PHP_EOL;
 	}
 	if($v['eventEntry'] != 0)
 		if($sunEvent = ConvertGameEventId($v['eventEntry']))

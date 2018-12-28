@@ -243,12 +243,13 @@ class DBConverter
 		$this->CheckExists("broadcast_text", "ID", $broadcast_id);
 	}
 
-	function SunHasCondition(&$tc_condition)
+	//overrideCheckSourceEntry is for menus that changed id, condition must apply to that new menu
+	function SunHasCondition(&$tc_condition, $overrideCheckSourceEntry = null)
 	{
 		foreach(array_keys($this->sunStore->conditions) as $key) {
 			if(   $tc_condition->SourceTypeOrReferenceId == $this->sunStore->conditions[$key]->SourceTypeOrReferenceId
 			   && $tc_condition->SourceGroup == $this->sunStore->conditions[$key]->SourceGroup
-			   && $tc_condition->SourceEntry == $this->sunStore->conditions[$key]->SourceEntry
+			   && ($overrideCheckSourceEntry ? $overrideCheckSourceEntry : $tc_condition->SourceEntry) == $this->sunStore->conditions[$key]->SourceEntry
 			   && $tc_condition->SourceId == $this->sunStore->conditions[$key]->SourceId
 			   && $tc_condition->ElseGroup == $this->sunStore->conditions[$key]->ElseGroup
 			   && $tc_condition->ConditionTypeOrReference == $this->sunStore->conditions[$key]->ConditionTypeOrReference
@@ -276,14 +277,14 @@ class DBConverter
 			if($this->tcStore->conditions[$key]->SourceTypeOrReferenceId != $CONDITION_SOURCE_TYPE_GOSSIP_MENU)
 			   continue;
 			   
-			if($this->tcStore->conditions[$key]->SourceGroup != $tc_menu_id) //SourceGroup = menu_id / SourceEntry = text_id
+			if($this->tcStore->conditions[$key]->SourceGroup != $tc_menu_id) 
 			   continue;
 			   
-			if($this->tcStore->conditions[$key]->SourceEntry != $tc_text_id) //SourceGroup = menu_id / SourceEntry = text_id
+			if($this->tcStore->conditions[$key]->SourceEntry != $tc_text_id) 
 			   continue;
 		   
-			if($this->SunHasCondition($this->tcStore->conditions[$key])) {
-				fwrite($this->file, "-- Sun db already has this condition" . PHP_EOL);
+			if($this->SunHasCondition($this->tcStore->conditions[$key], $sun_menu_id)) {
+				fwrite($this->file, "-- Sun db already has this condition (tc menu {$tc_menu_id}, sun menu {$sun_menu_id})" . PHP_EOL);
 				continue;
 			}
 			
@@ -316,8 +317,8 @@ class DBConverter
 			if($this->tcStore->conditions[$key]->SourceGroup != $tc_menu_id) //SourceGroup = menu_id / SourceEntry = option_id
 			   continue;
 		   
-			if($this->SunHasCondition($this->tcStore->conditions[$key])) {
-				fwrite($this->file, "-- Sun db already has this condition" . PHP_EOL);
+			if($this->SunHasCondition($this->tcStore->conditions[$key], $sun_menu_id)) {
+				fwrite($this->file, "-- Sun db already has this condition (tc menu {$tc_menu_id}, sun menu {$sun_menu_id})" . PHP_EOL);
 				continue;
 			}
 			
@@ -496,6 +497,7 @@ class DBConverter
 			if (   (strpos($sun_option->OptionText, 'Dual Talent') !== false)
 				|| ($sun_option->ActionPoiID > 0 && strpos($sun_option->OptionText, 'Inscription') !== false)
 				|| (strpos($sun_option->OptionText, 'Lexicon of') !== false)
+				|| (strpos($sun_option->OptionText, 'Barber') !== false)
 				) {
 				$sun_option->patch_min = 5; //TLK
 			}
@@ -570,8 +572,10 @@ class DBConverter
 		
 		$sun_menu_id = null;
 		if(HasAny($this->sunStore->gossip_menu, "MenuID", $tc_menu_id)) {
+			//would be very complicated to compare menus... just import a new one
 			$sun_menu_id = GetHighest($this->sunStore->gossip_menu, "MenuID") + 1;
 			$this->convertedTCMenus[$tc_menu_id] = $sun_menu_id;
+			fwrite($this->file, "-- Importing menu {$tc_menu_id} as {$sun_menu_id}".PHP_EOL); 
 		}
 		else
 			$sun_menu_id = $tc_menu_id;
@@ -735,7 +739,7 @@ class DBConverter
 			   continue;
 		   
 			if($this->SunHasCondition($this->tcStore->conditions[$key])) {
-				fwrite($this->file, "-- Sun db already has this condition" . PHP_EOL);
+				fwrite($this->file, "-- Sun db already has this condition (entry: {$tc_entry})" . PHP_EOL);
 				continue;
 			}
 			$sun_condition = $this->tcStore->conditions[$key]; //copy
