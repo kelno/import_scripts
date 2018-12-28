@@ -1402,15 +1402,8 @@ class DBConverter
 		
 		//game event creature
 		if(array_key_exists($guid, $this->tcStore->game_event_creature)) {
-			if($tc_gec = &$this->tcStore->game_event_creature[$guid])
-				if($sunEvent = ConvertGameEventId($tc_gec->eventEntry)) {
-					$sun_game_event_creature = new stdClass;
-					$sun_game_event_creature->guid = $guid;
-					$sun_game_event_creature->event = $sunEvent;
-					
-					$this->sunStore->game_event_creature[$guid] = $sun_game_event_creature;
-					fwrite($this->file, WriteObject($this->conn, "game_event_creature", $sun_game_event_creature));
-				}
+			$this->sunStore->game_event_creature[$guid] = $this->tcStore->game_event_creature[$guid];
+			fwrite($this->file, WriteObject($this->conn, "game_event_creature", $this->sunStore->game_event_creature[$guid]));
 		}
 		
 		$this->ImportSpawnGroup($guid);

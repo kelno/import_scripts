@@ -10,11 +10,16 @@ ALTER TABLE `trinityworld`.`creature`
 
   
 **creature_import.php**:   
-Old script, don't use
+ Import from TC creature table
 
 **gossips_select.php**:  
  Interactive UI, help to choose which gossip to import
 
 **gossips_import.php**:  
-Import process depending on creature_template.`import` column
-Generates `gossips.sql`
+ Import from creature_template table
+
+**creature_import_old.php**:   
+ Old version of creature_import.php
+ 
+**convert_game_event**:
+ Old script to match sun game events to tc game events
