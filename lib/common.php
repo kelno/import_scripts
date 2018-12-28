@@ -23,28 +23,30 @@ abstract class LoadMode
 	
 class DBStore
 {
-	public $gossip_menu = []; //key has NO MEANING
-	public $gossip_text = []; //key is text id
-	public $gossip_menu_option = []; //key has NO MEANING
 	public $broadcast_text = []; //key is broadcast id
-	public $creature_template = []; //key is entry
-	public $gameobject_template = [];  //key is entry
 	public $conditions = []; //key has NO MEANING
-	public $points_of_interest = []; //key has NO MEANING
-	public $smart_scripts = []; //key has NO MEANING
-	public $creature_text = []; //key has NO MEANING
-	public $waypoints = []; //key has NO MEANING
-	public $waypoint_data = []; //key has NO MEANING
 	public $creature = []; //key is spawnID
-	public $creature_entry = []; //key has NO MEANING
 	public $creature_addon = []; //key is spawnID
-	public $gameobject = []; //key is spawnID
-	public $game_event_creature = []; //key is spawnID
-	public $spawn_group = []; //key has NO MEANING
+	public $creature_entry = []; //key has NO MEANING
 	public $creature_formations = []; //key is memberGUID
+	public $creature_template = []; //key is entry
+	public $creature_text = []; //key has NO MEANING
+	public $game_event_creature = []; //key is spawnID
+	public $gameobject = []; //key is spawnID
+	public $gameobject_template = [];  //key is entry
+	public $gossip_menu = []; //key has NO MEANING
+	public $gossip_menu_option = []; //key has NO MEANING
+	public $gossip_text = []; //key is text id
+	public $points_of_interest = []; //key has NO MEANING
 	public $pool_creature = []; //key is spawnID
+	public $pool_template = []; //key is pool entry
+	public $smart_scripts = []; //key has NO MEANING
+	public $spawn_group = []; //key has NO MEANING
 	public $trainer = []; //key is ID
 	public $trainer_spell = []; //key has NO MEANING
+	public $waypoint_data = []; //key has NO MEANING
+	public $waypoint_scripts = []; //key has NO MEANING
+	public $waypoints = []; //key has NO MEANING
 	
 	private $loadmode = null;
 	
@@ -116,6 +118,11 @@ class DBStore
 		$stmt = $conn->query("SELECT * FROM {$databaseName}.waypoint_data");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
 		$this->waypoint_data = $stmt->fetchAll();
+		
+		$stmt = $conn->query("SELECT * FROM {$databaseName}.waypoint_scripts");
+		$stmt->setFetchMode(PDO::FETCH_OBJ);
+		foreach($stmt->fetchAll() as $v)
+			$this->waypoint_scripts[$v->id] = $v;
 	
 		$stmt = $conn->query("SELECT * FROM {$databaseName}.creature");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
@@ -167,6 +174,11 @@ class DBStore
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
 		foreach($stmt->fetchAll() as $v)
 			$this->pool_creature[$v->guid] = $v;
+		
+		$stmt = $conn->query("SELECT * FROM {$databaseName}.pool_template");
+		$stmt->setFetchMode(PDO::FETCH_OBJ);
+		foreach($stmt->fetchAll() as $v)
+			$this->pool_template[$v->entry] = $v;
 		
 		echo "\tDone" . PHP_EOL;
 	}
@@ -246,6 +258,7 @@ class DBConverter
 	//overrideCheckSourceEntry is for menus that changed id, condition must apply to that new menu
 	function SunHasCondition(&$tc_condition, $overrideCheckSourceEntry = null)
 	{
+		//probably wrong... can't use the $key for sunstore here
 		foreach(array_keys($this->sunStore->conditions) as $key) {
 			if(   $tc_condition->SourceTypeOrReferenceId == $this->sunStore->conditions[$key]->SourceTypeOrReferenceId
 			   && $tc_condition->SourceGroup == $this->sunStore->conditions[$key]->SourceGroup
@@ -295,12 +308,7 @@ class DBConverter
 			$sun_condition->Comment = "(autoimported) " . $this->tcStore->conditions[$key]->Comment;
 			$sun_condition->Comment = str_replace($tc_text_id, $sun_text_id, $sun_condition->Comment);
 			$sun_condition->Comment = str_replace($tc_menu_id, $sun_menu_id, $sun_condition->Comment);
-			
-			if($this->tcStore->conditions[$key]->ConditionTypeOrReference == Conditions::CONDITION_ACTIVE_EVENT) {
-				//echo "Convert event... " . $sun_condition->ConditionValue1 . PHP_EOL;
-				$sun_condition->ConditionValue1 = ConvertGameEventId($this->tcStore->conditions[$key]->ConditionValue1);
-			}
-				
+							
 			fwrite($this->file, WriteObject($this->conn, "conditions", $sun_condition));
 		}
 		$this->timelol("CMO2");
@@ -326,11 +334,6 @@ class DBConverter
 			$sun_condition->SourceGroup = $sun_menu_id;
 			$sun_condition->Comment = "(autoimported) " . $this->tcStore->conditions[$key]->Comment;
 			$sun_condition->Comment = str_replace($tc_menu_id, $sun_menu_id, $sun_condition->Comment);
-			
-			if($this->tcStore->conditions[$key]->ConditionTypeOrReference == Conditions::CONDITION_ACTIVE_EVENT) {
-				//echo "Convert event... " . $sun_condition->ConditionValue1 . PHP_EOL;
-				$sun_condition->ConditionValue1 = ConvertGameEventId($this->tcStore->conditions[$key]->ConditionValue1);
-			}
 			
 			fwrite($this->file, WriteObject($this->conn, "conditions", $sun_condition));
 		}
@@ -745,16 +748,11 @@ class DBConverter
 			$sun_condition = $this->tcStore->conditions[$key]; //copy
 			$sun_condition->Comment = "(autoimported) " . $this->tcStore->conditions[$key]->Comment;
 			
-			if($this->tcStore->conditions[$key]->ConditionTypeOrReference == Conditions::CONDITION_ACTIVE_EVENT) {
-				//echo "Convert event... " . $sun_condition->ConditionValue1 . PHP_EOL;
-				$sun_condition->ConditionValue1 = ConvertGameEventId($this->tcStore->conditions[$key]->ConditionValue1);
-			}
-				
 			fwrite($this->file, WriteObject($this->conn, "conditions", $sun_condition));
 		}
 	}
 
-	function CreateWaypoints($path_id)
+	function CreateSmartWaypoints($path_id)
 	{
 		if(CheckAlreadyImported($path_id)) {
 			fwrite($this->file, "-- Smart Waypoints {$path_id} are already imported" . PHP_EOL);
@@ -930,18 +928,13 @@ class DBConverter
 				case SmartEvent::WAYPOINT_STOPPED:
 				case SmartEvent::WAYPOINT_ENDED: 
 					if($path_id = $smart_entry->event_param2)
-						$this->CreateWaypoints($path_id);
+						$this->CreateSmartWaypoints($path_id);
 					break;
 				case SmartEvent::GOSSIP_SELECT:
 					if($tc_menu_id = $smart_entry->event_param1) {
 						$sun_menu_id = $this->CreateMenu($tc_menu_id);
 						$sun_smart_entry->event_param1 = $sun_menu_id;
 					}
-					break;
-				case SmartEvent::GAME_EVENT_START:
-				case SmartEvent::GAME_EVENT_END:
-					$event_id = $sun_smart_entry->event_param1;
-					$sun_smart_entry->action_param1 = ConvertGameEventId($event_id);
 					break;
 				default:
 					break;
@@ -980,7 +973,7 @@ class DBConverter
 					break;
 				case SmartAction::WP_START:
 					$path_id = $sun_smart_entry->action_param2;
-					$this->CreateWaypoints($path_id);
+					$this->CreateSmartWaypoints($path_id);
 					break;
 				case SmartAction::SUMMON_CREATURE:
 					$summonID = $sun_smart_entry->action_param1;
@@ -1123,7 +1116,7 @@ class DBConverter
 		}
 	}
 
-	function DeleteSunCreature($creature_id, array $not_in)
+	function DeleteSunCreatures($creature_id, array $not_in)
 	{
 		if(CheckAlreadyImported($creature_id))
 			return;
@@ -1135,18 +1128,116 @@ class DBConverter
 		}
 	}
 
-	function ImportWaypointscripts($action_id)
+	function SunHasSameWaypointsScripts(&$tcResults, $sunResults)
 	{
-		echo "NYI". PHP_EOL;
-		assert(false);
-		exit(1);
+		if(count($tcResults) != count($sunResults))
+			return false;
+		
+		$sunResults = array_values($sunResults); //this is to reset array keys
+		$i = 0;
+		foreach($tcResults as $tcResult) {
+			if($tcResult != $sunResults[$i++])
+				return false;
+		}
+		return true;
+	}
+	
+	function ImportWaypointScripts($action_id)
+	{
+		if(CheckAlreadyImported($action_id))
+			return;
+		
+		$results = FindAll($this->tcStore->waypoint_scripts, "id", $action_id);
+		if(empty($results)) {
+			echo "ERROR: Tried to import waypoint_scripts with id {$action_id} but no such entry exists" . PHP_EOL;
+			assert(false);
+			exit(1);
+		}
+		
+		$sunResults = FindAll($this->tcStore->waypoint_scripts, "id", $action_id);
+		if($this->SunHasSameWaypointsScripts($results, $sunResults)) {
+			fwrite($this->file, "-- Waypoint scripts with id {$action_id} are already present and the same" . PHP_EOL);
+			return;
+		}
+		
+		$sun_action_id = $action_id;
+		if(count($sunResults) > 0) {
+			//we have a path with this id, but no the same...
+			$sun_action_id = GetHighest($this->sunStore->waypoint_scripts, "id") + 1;
+		}
+		
+		foreach($results as $tc_waypoint_script) {
+			$sun_waypoint_script = $tc_waypoint_script; //copy
+			$sun_waypoint_script->id = $sun_action_id;
+			//command could be 0 = SCRIPT_COMMAND_TALK, but we already get the same broadcast_text tables, so nothing to change here!
+				
+			array_push($this->sunStore->waypoint_scripts, $sun_waypoint_script);
+			fwrite($this->file, WriteObject($this->conn, "waypoint_scripts", $sun_waypoint_script));
+		}
+		
+		return $sun_action_id;
 	}
 
-	function ImportWaypoints($guid, $path_id, $includeMovementTypeUpdate = true)
+	//not sure this is working
+	function SunHasSameWaypoints(&$tcResults, $sunResults)
 	{
-		echo "NYI". PHP_EOL;
-		assert(false);
-		exit(1);
+		if(count($tcResults) != count($sunResults))
+			return false;
+		
+		$sunResults = array_values($sunResults); //this is to reset array keys
+		$i = 0;
+		foreach($tcResults as $tcResult) {
+			if($tcResult != $sunResults[$i++])
+				return false;
+		}
+		return true;
+	}
+	
+	//return new path_id
+	function ImportWaypoints($guid, $tc_path_id, $includeMovementTypeUpdate = true)
+	{
+		$results = FindAll($this->tcStore->waypoint_data, "id", $tc_path_id);
+		if(empty($results)) {
+			echo "ERROR: Tried to import waypoint_data with path_id {$tc_path_id} but no such path exists" . PHP_EOL;
+			assert(false);
+			exit(1);
+		}
+		
+		if(CheckAlreadyImported($tc_path_id)) {
+			fwrite($this->file, "-- Path {$tc_path_id} is already imported" . PHP_EOL);
+			return;
+		}
+		
+		$sunResults = FindAll($this->sunStore->waypoint_data, "id", $tc_path_id);
+		if($this->SunHasSameWaypoints($results, $sunResults)) {
+			fwrite($this->file, "-- Path {$tc_path_id} is already present and the same" . PHP_EOL);
+			return;
+		}
+		
+		$sun_path_id = $tc_path_id;
+		if(count($sunResults) > 0) {
+			//we have a path with this id, but no the same...
+			$sun_path_id = GetHighest($this->sunStore->waypoint_data, "id") + 1;
+		}
+		
+		foreach($results as $tc_waypoint) {
+			$sun_waypoint = $tc_waypoint; //copy
+			$sun_waypoint->id = $sun_path_id;
+			if($tc_action = $tc_waypoint->action)
+				$sun_waypoint->action = $this->ImportWaypointScripts($tc_action);
+			else
+				$sun_waypoint->action = "NULL";
+			
+			array_push($this->sunStore->waypoint_data, $sun_waypoint);
+			fwrite($this->file, WriteObject($this->conn, "waypoint_data", $sun_waypoint));
+		}
+		
+		if($includeMovementTypeUpdate) {
+			$this->sunStore->creature[$guid]->MovementType = 2;
+			fwrite($this->file, "UPDATE creature SET MovementType = 2 WHERE spawnID = {$guid};" . PHP_EOL);
+		}
+		
+		return $sun_path_id;
 	}
 
 	function ImportSpawnGroup($guid)
@@ -1197,12 +1288,40 @@ class DBConverter
 		}
 	}
 
-	function WarnPool($guid)
+	function ImportPool($guid)
 	{
-		if(array_key_exists($guid, $this->tcStore->pool_creature)) {
-			$pool_entry = $this->tcStore->pool_creature->pool_entry;
-			echo "WARNING: Imported creature guid {$guid} is part of pool {$pool_entry}" . PHP_EOL;
+		if(!array_key_exists($guid, $this->tcStore->pool_creature))
+			return;
+		
+		$tc_pool_entry = $this->tcStore->pool_creature[$guid]->pool_entry;
+		
+		if(!array_key_exists($tc_pool_entry, $this->tcStore->pool_template)) {
+			echo "ERROR: TC has creature {$guid} which part of pool {$pool_entry}, but this pool does not exists" . PHP_EOL;
+			return;
 		}
+		
+		//Handle pool template
+		if(array_key_exists($tc_pool_entry, $this->sunStore->pool_template)) { 
+			if($this->sunStore->pool_template[$tc_pool_entry]->description != $this->tcStore->pool_template[$tc_pool_entry]->description)
+			{ //we have that pool id but not the same pool
+				echo "WARNING: Imported creature {$guid} is part of pool {$tc_pool_entry} but a pool with this entry (but different description already exists). Need manual fix." . PHP_EOL;
+				return;
+			}
+			else { //we have that pool id and same pool, no need to import template
+				//fwrite($this->file, "-- Imported creature {$guid} is part of pool {$tc_pool_entry} which already exists" . PHP_EOL);
+			}
+		}
+		else { 
+			//if sun doesn't have that pool
+			$sun_pool_template = $this->tcStore->pool_template[$tc_pool_entry];
+			$this->sunStore->pool_template[$tc_pool_entry] = $sun_pool_template;
+			fwrite($this->file, WriteObject($this->conn, "pool_template", $sun_pool_template));
+		}
+		
+		//and finally add this creature to the pool
+		$pool_creature = $this->tcStore->pool_creature[$guid];
+		$this->sunStore->pool_creature[$guid] = $pool_creature;
+		fwrite($this->file, WriteObject($this->conn, "pool_creature", $pool_creature));
 	}
 
 	function ImportTCCreature($guid, $patch_min = 0, $patch_max = 10)
@@ -1211,9 +1330,10 @@ class DBConverter
 			return;
 		
 		if(array_key_exists($guid, $this->sunStore->creature)) {
-			echo "ERROR: Trying to import creature with guid {$guid} but creature already exists" . PHP_EOL;
+			return;
+			/*echo "ERROR: Trying to import creature with guid {$guid} but creature already exists" . PHP_EOL;
 			assert(false);
-			exit(1);
+			exit(1);*/
 		}
 		
 		$tc_creature = &$this->tcStore->creature[$guid];
@@ -1249,7 +1369,9 @@ class DBConverter
 		$sun_creature->MovementType = $tc_creature->MovementType;
 		$sun_creature->unit_flags = $tc_creature->unit_flags;
 		$sun_creature->pool_id = 0;
-		$sun_creature->patch_min= $patch_min;
+		if($sun_creature->map > 593) //not sure about id here
+			$patch_min = 5;
+		$sun_creature->patch_min = $patch_min;
 		$sun_creature->patch_max = $patch_max;
 		
 		$this->sunStore->creature[$guid] = $sun_creature;
@@ -1281,7 +1403,7 @@ class DBConverter
 		//game event creature
 		if(array_key_exists($guid, $this->tcStore->game_event_creature)) {
 			if($tc_gec = &$this->tcStore->game_event_creature[$guid])
-				if($sunEvent = ConvertGameEventId($v['eventEntry'])) {
+				if($sunEvent = ConvertGameEventId($tc_gec->eventEntry)) {
 					$sun_game_event_creature = new stdClass;
 					$sun_game_event_creature->guid = $guid;
 					$sun_game_event_creature->event = $sunEvent;
@@ -1293,10 +1415,10 @@ class DBConverter
 		
 		$this->ImportSpawnGroup($guid);
 		$this->ImportFormation($guid);
-		$this->WarnPool($guid);
+		$this->ImportPool($guid);
 	}
 
-	function CreateReplaceAllCreature($creature_id)
+	function CreateReplaceAllCreature($creature_id, $patch_min = 0, $patch_max = 10)
 	{
 		if(CheckAlreadyImported($creature_id))
 			return;
@@ -1312,8 +1434,8 @@ class DBConverter
 		foreach($results as $tc_creature) {
 			array_push($tc_guids, $tc_creature->guid);
 			if(!array_key_exists($tc_creature->guid, $this->sunStore->creature))
-				$this->ImportTCCreature($tc_creature->guid);
+				$this->ImportTCCreature($tc_creature->guid, $patch_min, $patch_max);
 		}
-		$this->DeleteSunCreature($creature_id, $tc_guids);
+		$this->DeleteSunCreatures($creature_id, $tc_guids);
 	}
 };

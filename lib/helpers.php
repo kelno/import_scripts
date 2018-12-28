@@ -176,49 +176,6 @@ function ConvertPoIIcon($icon)
 	}
 }
 
-function ConvertGameEventId($tcEvent)
-{
-	//TODO: handle negative events
-	switch($tcEvent)
-	{
-	case 1: 
-	case 2: 
-	case 3:
-	case 4:
-	case 5:
-	case 6:
-	case 7:
-	case 8:
-	case 9:
-	case 10:
-	case 11:
-	case 12:
-	case 14:
-	case 18:
-	case 19:
-	case 20:
-	case 21:
-	case 23:
-		return $tcEvent;
-	case 24:
-		return 26;
-	case 50:
-		return 80; //Pirates' Day
-	case 51:
-		return 81; //Day of the Dead
-	case 52:
-		return 57;
-	case 62:
-		return 82;
-	case 56:
-		return 75;
-	// ... incomplete table here... add if the warning is triggered
-	default:
-		echo "WARNING: Unhandled TC event: " . $tcEvent . PHP_EOL;
-		return 0;
-	}
-}
-
 function ConvertSpawnGroup(&$id, $guid)
 {
 	switch($id)
@@ -229,11 +186,17 @@ function ConvertSpawnGroup(&$id, $guid)
 	case 3:
 	case 4:
 		return true;
-	case 44:
+	case 44: //alar
 		$id = 7;
 		return true;
-	case 46:
+	case 45: //void reaver
+		$id = 8;
+		return true;
+	case 46: //solarian
 		$id = 6;
+		return true;
+	case 47: //kael thas:
+		$id = 9;
 		return true;
 	default:
 		echo "Unknown spawn group {$id} for tc guid {$guid}" . PHP_EOL;

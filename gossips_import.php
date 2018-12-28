@@ -44,7 +44,6 @@ ORDER BY tc.gossip_menu_id ";
 //echo $query . PHP_EOL;
 $stmt = $conn->query($query);
 $stmt->setFetchMode(PDO::FETCH_ASSOC);
-$start = microtime(true);
 		
 echo "Importing... " . PHP_EOL;
 foreach($stmt->fetchAll() as $v) {
@@ -83,4 +82,5 @@ foreach($stmt->fetchAll() as $v) {
 fclose($file);
 
 $duration = microtime(true) - $start;
+$duration = number_format($duration, 4);
 echo "Finished in {$duration}s" . PHP_EOL;	
