@@ -186,6 +186,9 @@ function ConvertSpawnGroup(&$id, $guid)
 	case 3:
 	case 4:
 		return true;
+	case 10: //onyxia lair
+		$id = 31;
+		return true;
 	case 44: //alar
 		$id = 7;
 		return true;

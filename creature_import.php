@@ -53,6 +53,9 @@ foreach($stmt->fetchAll() as $v) {
 		case "REPLACE_ALL_LK": //same but add LK patch condition
 			$converter->CreateReplaceAllCreature($creature_id, 5);
 			break;
+		case "IMPORT_MAP":
+			$converter->CreateReplaceMap($v["map"]);
+			break;
 		default:
 			echo "ERROR: Non handled enum value: " . $v["import"] . PHP_EOL;
 			exit(1);

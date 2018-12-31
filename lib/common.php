@@ -1,6 +1,7 @@
 <?php
 
 include_once(__DIR__ . '/helpers.php');
+include_once(__DIR__ . '/smartai.php');
 include_once(__DIR__ . '/../config.php');
 
 set_error_handler(function($severity, $message, $file, $line) {
@@ -163,8 +164,11 @@ class DBStore
 		
 		$stmt = $conn->query("SELECT * FROM {$databaseName}.creature_formations");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		foreach($stmt->fetchAll() as $v)
+		foreach($stmt->fetchAll() as $v) {
 			$this->creature_formations[$v->memberGUID] = $v;
+			if(!$v->leaderGUID)
+				$this->creature_formations[$v->memberGUID]->leaderGUID = $v->memberGUID; //special handling for leader, it's always NULL in db for leader
+		}
 		
 		$stmt = $conn->query("SELECT * FROM {$databaseName}.spawn_group");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
@@ -1104,7 +1108,7 @@ class DBConverter
 			if($result->source_type != SmartSourceType::creature)
 				continue;
 			
-			echo "WARNING: Deleting a creature with a per guid smartscript: {$spawn_id}. Smart scripts ref has been left as is." . PHP_EOL;
+			echo "WARNING: Deleting a creature (guid: {$spawn_id}) with a per guid SmartScripts ({$result->entryorguid}, {$result->id}). Smart scripts ref has been left as is." . PHP_EOL;
 		}
 		
 		$results = FindAll($this->sunStore->smart_scripts, "target_param1", $spawn_id);
@@ -1112,7 +1116,7 @@ class DBConverter
 			if($result->target_type != SmartTarget::CREATURE_GUID)
 				continue;
 			
-			echo "WARNING: Deleting creature {$guid} targeted by a smartscript ({$result['entryorguid']}, {$result['id']}). Smart scripts ref has been left as is." . PHP_EOL;
+			echo "WARNING: Deleting creature (guid: {$spawn_id}) targeted by a smartscript ({$result->entryorguid}, {$result->id}). Smart scripts ref has been left as is." . PHP_EOL;
 		}
 	}
 
@@ -1128,6 +1132,18 @@ class DBConverter
 		}
 	}
 
+	function DeleteSunCreaturesInMap($map_id, array $not_in)
+	{
+		if(CheckAlreadyImported($map_id))
+			return;
+		
+		$results = FindAll($this->sunStore->creature, "map", $map_id);
+		foreach($results as $result) {
+			if(!in_array($result->spawnID, $not_in))
+				$this->DeleteSunCreatureSpawn($result->spawnID);
+		}
+	}
+	
 	function SunHasSameWaypointsScripts(&$tcResults, $sunResults)
 	{
 		if(count($tcResults) != count($sunResults))
@@ -1145,7 +1161,7 @@ class DBConverter
 	function ImportWaypointScripts($action_id)
 	{
 		if(CheckAlreadyImported($action_id))
-			return;
+			return $action_id;
 		
 		$results = FindAll($this->tcStore->waypoint_scripts, "id", $action_id);
 		if(empty($results)) {
@@ -1154,10 +1170,10 @@ class DBConverter
 			exit(1);
 		}
 		
-		$sunResults = FindAll($this->tcStore->waypoint_scripts, "id", $action_id);
+		$sunResults = FindAll($this->sunStore->waypoint_scripts, "id", $action_id);
 		if($this->SunHasSameWaypointsScripts($results, $sunResults)) {
 			fwrite($this->file, "-- Waypoint scripts with id {$action_id} are already present and the same" . PHP_EOL);
-			return;
+			return $action_id;
 		}
 		
 		$sun_action_id = $action_id;
@@ -1169,7 +1185,29 @@ class DBConverter
 		foreach($results as $tc_waypoint_script) {
 			$sun_waypoint_script = $tc_waypoint_script; //copy
 			$sun_waypoint_script->id = $sun_action_id;
-			//command could be 0 = SCRIPT_COMMAND_TALK, but we already get the same broadcast_text tables, so nothing to change here!
+			unset($sun_waypoint_script->guid); //let db generate a new one here
+			switch($tc_waypoint_script->command)
+			{
+				case 0: //SCRIPT_COMMAND_TALK:
+					//we already get the same broadcast_text tables, so nothing to change here!
+					break;
+				case 31: //SCRIPT_COMMAND_EQUIP
+					echo "ERROR: NYI SCRIPT_COMMAND_EQUIP (31)" . PHP_EOL;
+					assert(false);
+					exit(1);
+					break;
+				case 35: //SCRIPT_COMMAND_MOVEMENT
+					$movementType = $tc_waypoint_script->datalong;
+					if($movementType == 2) { // WAYPOINT_MOTION_TYPE
+						$path_id = $tc_waypoint_script->dataint;
+						echo "ERROR: NYI SCRIPT_COMMAND_MOVEMENT (35) with WAYPOINT_MOTION_TYPE" . PHP_EOL;
+						assert(false);
+						exit(1);
+					}
+					break;
+				default:
+					break;
+			}
 				
 			array_push($this->sunStore->waypoint_scripts, $sun_waypoint_script);
 			fwrite($this->file, WriteObject($this->conn, "waypoint_scripts", $sun_waypoint_script));
@@ -1226,7 +1264,7 @@ class DBConverter
 			if($tc_action = $tc_waypoint->action)
 				$sun_waypoint->action = $this->ImportWaypointScripts($tc_action);
 			else
-				$sun_waypoint->action = "NULL";
+				$sun_waypoint->action = 'NULL';
 			
 			array_push($this->sunStore->waypoint_data, $sun_waypoint);
 			fwrite($this->file, WriteObject($this->conn, "waypoint_data", $sun_waypoint));
@@ -1302,13 +1340,16 @@ class DBConverter
 			$sun_formation = new stdClass; 
 			$sun_formation->leaderGUID = $leaderGUID;
 			$sun_formation->memberGUID = $tc_formation->memberGUID;
+			$sun_formation->dist = $tc_formation->dist;
 			$sun_formation->groupAI = 2;//alway 2, we don't use the same AI system than TC
 			$sun_formation->angle = deg2rad($tc_formation->angle); //TC has degree, Sun has radian
 			
-			if($sun_formation->leaderGUID == $sun_formation->memberGUID)
-				$sun_formation->leaderGUID = "NULL"; //special on SUN as well
-			
 			$this->sunStore->creature_formations[$sun_formation->memberGUID] = $sun_formation;
+			
+			if($sun_formation->leaderGUID == $sun_formation->memberGUID)
+				$sun_formation->leaderGUID = "NULL"; //special on SUN as well (only do that for the WriteObject, not for the store)
+			
+			$this->delayedFormationsImports .= "DELETE FROM creature_formations WHERE memberGUID = {$sun_formation->memberGUID};" . PHP_EOL;
 			$this->delayedFormationsImports .= WriteObject($this->conn, "creature_formations", $sun_formation);
 		}
 	}
@@ -1477,6 +1518,27 @@ class DBConverter
 		$this->HandleFormations();
 	}
 	
+	function CreateReplaceMap($map_id, $patch_min = 0, $patch_max = 10)
+	{
+		if(CheckAlreadyImported($map_id))
+			return;
+			
+		$results = FindAll($this->tcStore->creature, "map", $map_id);
+		if(empty($results)) {
+			echo "ERROR: Failed to find any TC creature with map {$map_id}" . PHP_EOL;
+			assert(false);
+			exit(1);
+		}
+		
+		$tc_guids = [];
+		foreach($results as $tc_creature) {
+			array_push($tc_guids, $tc_creature->guid);
+			if(!array_key_exists($tc_creature->guid, $this->sunStore->creature))
+				$this->ImportTCCreature($tc_creature->guid, $patch_min, $patch_max);
+		}
+		$this->DeleteSunCreaturesInMap($map_id, $tc_guids);
+		$this->HandleFormations();
+	}
 
 	//Write formations stored in $this->delayedFormationsImports
 	function HandleFormations()

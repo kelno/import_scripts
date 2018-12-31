@@ -1,7 +1,5 @@
 <?php
 
-include_once(__DIR__ . '/common.php');
-
 abstract class SmartSourceType
 {
 	const creature = 0;
