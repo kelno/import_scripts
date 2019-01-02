@@ -1,14 +1,14 @@
 <?php
 
 //Convert object into insert query
-function WriteObject(&$conn, $tableName, &$object)
+function WriteObject(&$conn, string $tableName, &$object) : string
 {
 	$array = [ $object ];
 	return WriteObjects($conn, $tableName, $array);
 }
 
 //Convert objects into insert query
-function WriteObjects(&$conn, $tableName, &$objectArray)
+function WriteObjects(&$conn, string $tableName, array &$objectArray) : string
 {
 	$keys = [];
 	foreach(get_object_vars($objectArray[0]) as $k => $v)
@@ -40,7 +40,7 @@ function WriteObjects(&$conn, $tableName, &$objectArray)
 }
 
 //check if the caller has already called this function with given id
-function CheckAlreadyImported($id)
+function CheckAlreadyImported(int $id) : bool
 {
 	static $imported = [ ];
 	$callerName = debug_backtrace()[1]['function'];
@@ -56,7 +56,7 @@ function CheckAlreadyImported($id)
 	return false;
 }
 
-function HasAny(&$container, $keyname, $value)
+function HasAny(array &$container, int $keyname, int $value) : bool
 {
 	foreach(array_keys($container) as $key)
 		if($container[$key]->$keyname == $value)
@@ -65,7 +65,7 @@ function HasAny(&$container, $keyname, $value)
 	return false;
 }
 
-function GetHighest(&$container, $keyname)
+function GetHighest(&$container, $keyname) : int
 {
 	$highest = 0;
 	
@@ -75,14 +75,14 @@ function GetHighest(&$container, $keyname)
 	return $highest;
 }
 
-function CheckIdentical(&$sunContainer, &$tcContainer, $keyname, $value)
+function CheckIdentical(array &$sunContainer, array &$tcContainer, string $keyname, $value) : bool
 {
 	$sunResults = FindAll($sunContainer, $keyname, $value);
 	$tcResults = FindAll($tcContainer, $keyname, $value);
 	return $sunResults == $tcResults; //does this work okay? This is supposed to compare keys + values, but we don't care about keys.
 }
 
-function FindAll(&$container, $keyname, $value)
+function FindAll(array &$container, string $keyname, $value) : array
 {
 	$results = [];
 	
@@ -94,7 +94,7 @@ function FindAll(&$container, $keyname, $value)
 	return $results;
 }
 
-function RemoveAny(&$container, $keyname, $value)
+function RemoveAny(&$container, string $keyname, $value)
 {
 	foreach(array_keys($container) as $key) {
 		if($container[$key]->$keyname == $value)
@@ -107,7 +107,7 @@ abstract class Conditions
 	const CONDITION_ACTIVE_EVENT = 12;
 }
 	
-function GetConditionName($conditionType)
+function GetConditionName(int $conditionType) : string
 {
 	switch($conditionType)
 	{
@@ -164,7 +164,7 @@ function GetConditionName($conditionType)
 	}
 }
 
-function ConvertPoIIcon($icon)
+function ConvertPoIIcon(int $icon) : int
 {
 	switch($icon)
 	{
@@ -176,7 +176,7 @@ function ConvertPoIIcon($icon)
 	}
 }
 
-function ConvertSpawnGroup(&$id, $guid)
+function ConvertSpawnGroup(int &$id, int $guid) : int
 {
 	switch($id)
 	{

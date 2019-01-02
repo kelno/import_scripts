@@ -6,6 +6,10 @@ ALTER TABLE `trinityworld`.`creature_template`
   
 ALTER TABLE `trinityworld`.`creature`   
   ADD COLUMN `import` ENUM('IMPORT','REPLACE_ALL','REPLACE_ALL_LK','LK_ONLY','MOVE_UNIQUE_IMPORT_WP','UPDATE_SPAWNID','IMPORT_WP', 'IGNORE', 'IMPORT_MAP') CHARSET utf8 COLLATE utf8_general_ci NULL;
+  
+ALTER TABLE `trinityworld`.`gameobject`   
+  ADD COLUMN `import` ENUM('REPLACE_ALL','IMPORT', 'IGNORE') CHARSET utf8 COLLATE utf8_general_ci NULL;
+  
 ```
 
   
@@ -16,10 +20,15 @@ ALTER TABLE `trinityworld`.`creature`
  Interactive UI, help to choose which gossip to import
 
 **gossips_import.php**:  
- Import from creature_template table
-
+ Import from TC creature_template table
+ 
+**gob_import.php**:
+  mport from TC gameobject table
+ 
 **creature_import_old.php**:   
  Old version of creature_import.php
  
 **convert_game_event**:
  Old script to match sun game events to tc game events
+
+ 
