@@ -32,7 +32,7 @@ class DBStore
 	public $creature_addon = []; //key is spawnID
 	public $creature_entry = []; //key has NO MEANING
 	public $creature_formations = []; //key is memberGUID
-	public $creature_template = []; //key is entry
+	public $creature_template = []; //key is entry TODO, should switch to no meaning
 	public $creature_text = []; //key has NO MEANING
 	public $game_event_creature = []; //key is spawnID
 	public $gameobject = []; //key is spawnID
@@ -973,6 +973,13 @@ class DBConverter
 				case SmartAction::SIMPLE_TALK:
 					$this->CreateCreatureText($action_list_origin ? $action_list_origin : $tc_entry);
 					break;
+				case SmartAction::CAST:
+					$spell_id = $sun_smart_entry->action_param1;
+					//check if spell exists for TBC
+					if(!array_key_exists($spell_id, $this->sunStore->spell_template)) {
+						$sun_smart_entry->patch_min = 5;
+					}
+					break;
 				case SmartAction::CALL_TIMED_ACTIONLIST:
 					$this->CreateSmartAI($sun_smart_entry->action_param1, SmartSourceType::timedactionlist, $action_list_origin);
 					break;
@@ -1446,6 +1453,31 @@ class DBConverter
 		TODO;
 	}
 	
+	function ImportCreatureTemplate($id)
+	{
+		assert(array_key_exists($id, $this->tcStore->creature_template));
+			
+		if(array_key_exists($id, $this->sunStore->creature_template)) {
+			$sun_name = $this->sunStore->creature_template[$id]->name;
+			$tc_name = $this->tcStore->creature_template[$id]->name;
+			if($sun_name != $tc_name) {
+				echo "ERROR: Sun db already has creature {$id} ({$tc_name})... but under a different name ({$sun_name}). Is this a custom creature?" . PHP_EOL;
+				assert(false);
+				exit(1);
+			}
+			return;
+		}
+		
+		$sun_creature_template = new stdClass;
+		$sun_creature_template->entry = $tc_creature->id;
+		$sun_creature_template->name = $this->tcStore->creature_template[$tc_creature->id]->name;
+		echo "NYI";
+		assert(false);
+		exit(1);
+		$this->sunStore->creature_template[$sun_creature_template->entry] = $sun_creature_template;
+		fwrite($this->file, WriteObject($this->conn, "creature_template", $sun_creature_template));
+	}
+	
 	//don't forget to call HandleFormations after this
 	function ImportTCCreature(int $guid, int $patch_min = 0, int $patch_max = 10)
 	{
@@ -1470,17 +1502,8 @@ class DBConverter
 		$sun_creature_entry->spawnID = $guid;
 		$sun_creature_entry->entry = $tc_creature->id;
 		
-		$tlk_creature = !array_key_exists($tc_creature->id, $this->sunStore->creature_template);
-		if($tlk_creature) {
-			//create a dummy tlk creature if needed to ensure FK are correct
-			assert(array_key_exists($tc_creature->id, $this->tcStore->creature_template));
-			fwrite($this->file, "-- Importing dummy TLK creature" . PHP_EOL);
-			$sun_creature_template = new stdClass;
-			$sun_creature_template->entry = $tc_creature->id;
-			$sun_creature_template->patch = 5;
-			$sun_creature_template->name = "Dummy TLK creature - " . $this->tcStore->creature_template[$tc_creature->id]->name;
-			$this->sunStore->creature_template[$sun_creature_template->entry] = $sun_creature_template;
-			fwrite($this->file, WriteObject($this->conn, "creature_template", $sun_creature_template));
+		if(IsTLKCreature($tc_creature->id)) {
+			ImportCreatureTemplate($tc_creature->id);
 			if($patch_min < 5)
 				$patch_min = 5;
 		}
@@ -1507,7 +1530,7 @@ class DBConverter
 		$sun_creature->MovementType = $tc_creature->MovementType;
 		$sun_creature->unit_flags = $tc_creature->unit_flags;
 		$sun_creature->pool_id = 0;
-		if($sun_creature->map > 593) //First TLK map. Not sure about id here
+		if(IsTLKMap($sun_creature->map))
 			$patch_min = 5;
 		$sun_creature->patch_min = $patch_min;
 		$sun_creature->patch_max = $patch_max;
@@ -1625,6 +1648,38 @@ class DBConverter
 		$this->delayedFormationsImports = "";
 	}
 	
+	function ImportGameObjectTemplate($id)
+	{
+		assert(array_key_exists($id, $this->tcStore->gameobject_template));
+		$tc_gameobject_template = &$this->tcStore->gameobject_template[$id];
+		
+		$sun_gameobject_template = new stdClass;
+		$sun_gameobject_template->entry = $id;
+		$sun_gameobject_template->type = $tc_gameobject_template->type;
+		$sun_gameobject_template->displayId = $tc_gameobject_template->displayId;
+		$sun_gameobject_template->name = $tc_gameobject_template->name;
+		$sun_gameobject_template->castBarCaption = $tc_gameobject_template->castBarCaption;
+		$sun_gameobject_template->faction = 0;
+		$sun_gameobject_template->flags = 0;
+		$sun_gameobject_template->size = $tc_gameobject_template->size;
+		for($i = 0; $i < 24; $i++) {
+			$sun_field_name = 'data' . $i;
+			$tc_field_name = 'Data' . $i;
+			$sun_gameobject_template->$sun_field_name = $tc_gameobject_template->$tc_field_name;
+		}
+		$sun_gameobject_template->AIName = $tc_gameobject_template->AIName;
+		$sun_gameobject_template->ScriptName = $tc_gameobject_template->ScriptName;
+		
+		if ($sun_gameobject_template->AIName != "") 
+			echo "WARNING: Importing gameobject template {$id} which has AIName {$sun_gameobject_template->AIName}" . PHP_EOL;
+		
+		if ($sun_gameobject_template->ScriptName != "")
+			echo "WARNING: Importing gameobject template {$id} which has ScriptName {$sun_gameobject_template->ScriptName}" . PHP_EOL;
+		
+		$this->sunStore->gameobject_template[$sun_gameobject_template->entry] = $sun_gameobject_template;
+		fwrite($this->file, WriteObject($this->conn, "gameobject_template", $sun_gameobject_template));
+	}
+	
 	function ImportTCGameObject(int $guid, int $patch_min = 0, int $patch_max = 10)
 	{
 		if(CheckAlreadyImported($guid))
@@ -1641,29 +1696,32 @@ class DBConverter
 		
 		$tlk_gameobject = !array_key_exists($tc_gameobject->id, $this->sunStore->gameobject_template);
 		if($tlk_gameobject) {
-			//create a dummy tlk creature if needed to ensure FK are correct
-			assert(array_key_exists($tlk_gameobject->id, $this->tcStore->gameobject_template));
-			fwrite($this->file, "-- Importing dummy TLK gameobject" . PHP_EOL);
-			$sun_gameobject_template = new stdClass;
-			$sun_gameobject_template->entry = $tlk_gameobject->id;
-			$sun_gameobject_template->patch = 5;
-			$sun_gameobject_template->name = "Dummy TLK gameobject - " . $this->tcStore->gameobject_template[$tlk_gameobject->id]->name;
-			$this->sunStore->gameobject_template[$sun_gameobject_template->entry] = $sun_gameobject_template;
-			fwrite($this->file, WriteObject($this->conn, "gameobject_template", $sun_gameobject_template));
-			if($patch_min < 5)
+			ImportGameObjectTemplate($tc_gameobject->id);
+			if(IsTLKGameObject($tc_gameobject->id) && $patch_min < 5)
 				$patch_min = 5;
 		}
 		
 		//create gameobject
-		$sun_gameobject = $tc_gameobject; //copy
-		unset($sun_gameobject->zoneId);
-		unset($sun_gameobject->areaId);
-		unset($sun_gameobject->phaseMask);
-		unset($sun_gameobject->VerifiedBuild);
-		if($sun_gameobject->map > 593) //First TLK map. Not sure about id here
+		$sun_gameobject = new stdClass;
+		$sun_gameobject->guid          = $guid;
+		$sun_gameobject->id            = $tc_gameobject->id;
+		$sun_gameobject->map           = $tc_gameobject->map;
+		$sun_gameobject->spawnMask     = $tc_gameobject->spawnMask;
+		$sun_gameobject->position_x    = $tc_gameobject->position_x;
+		$sun_gameobject->position_y    = $tc_gameobject->position_y;
+		$sun_gameobject->position_z    = $tc_gameobject->position_z;
+		$sun_gameobject->rotation0     = $tc_gameobject->rotation0;
+		$sun_gameobject->rotation1     = $tc_gameobject->rotation1;
+		$sun_gameobject->rotation2     = $tc_gameobject->rotation2;
+		$sun_gameobject->rotation3     = $tc_gameobject->rotation3;
+		$sun_gameobject->spawntimesecs = $tc_gameobject->spawntimesecs;
+		$sun_gameobject->animprogress  = $tc_gameobject->animprogress;
+		$sun_gameobject->state         = $tc_gameobject->state;
+		$sun_gameobject->ScriptName    = $tc_gameobject->ScriptName;
+		if(IsTLKMap($sun_gameobject->map))
 			$patch_min = 5;
-		$sun_gameobject->patch_min = $patch_min;
-		$sun_gameobject->patch_max = $patch_max;
+		$sun_gameobject->patch_min     = $patch_min;
+		$sun_gameobject->patch_max     = $patch_max;
 		
 		$this->sunStore->gameobject[$guid] = $sun_gameobject;
 		fwrite($this->file, WriteObject($this->conn, "gameobject", $sun_gameobject));
@@ -1686,7 +1744,7 @@ class DBConverter
 		if(CheckAlreadyImported($spawn_id))
 			return;
 		
-		$sql = "DELETE c1, c2, sg FROM gameobject g " .
+		$sql = "DELETE g, c1, c2, sg FROM gameobject g " .
 					"LEFT JOIN conditions c1 ON c1.ConditionTypeOrReference = 31 AND c1.ConditionValue1 = 5 AND c1.ConditionValue3 = {$spawn_id} " .
 					"LEFT JOIN conditions c2 ON c1.SourceEntry = -{$spawn_id} AND c2.SourceId = 1 AND c2.SourceTypeOrReferenceId = 22 " . //SourceId = SMART_SCRIPT_TYPE_GAMEOBJECT
 					"LEFT JOIN spawn_group sg ON sg.spawnId = {$spawn_id} AND spawnType = 1 " . //gob type
@@ -1723,7 +1781,6 @@ class DBConverter
 		}
 	}
 
-	
 	function CreateReplaceAllGameObject(int $gob_id, int $patch_min = 0, int $patch_max = 10)
 	{
 		if(CheckAlreadyImported($gob_id))
@@ -1742,6 +1799,6 @@ class DBConverter
 			if(!array_key_exists($tc_gob->guid, $this->sunStore->gameobject))
 				$this->ImportTCGameObject($tc_gob->guid, $patch_min, $patch_max);
 		}
-		$this->DeleteSunGameObjects($creature_id, $tc_guids);
+		$this->DeleteSunGameObjects($gob_id, $tc_guids);
 	}
 };

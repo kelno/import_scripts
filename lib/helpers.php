@@ -206,3 +206,18 @@ function ConvertSpawnGroup(int &$id, int $guid) : int
 		return false;
 	}
 }
+
+function IsTLKMap(int $map_id) : bool
+{
+	return $map_id > 568; //First TLK map? Not sure about id here
+}
+
+function IsTLKGameObject(int $gob_id) : bool
+{
+	return $gob_id > 211084 AND $gob_id < 300000; 
+}
+
+function IsTLKCreature(int $creature_id) : bool
+{
+	return $creature_id > 29095;
+}
