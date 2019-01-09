@@ -214,10 +214,10 @@ function IsTLKMap(int $map_id) : bool
 
 function IsTLKGameObject(int $gob_id) : bool
 {
-	return $gob_id > 211084 AND $gob_id < 300000; 
+	return $gob_id > 211084 AND $gob_id < 300000;  //not exact... its a bit interwined at the end of the range
 }
 
 function IsTLKCreature(int $creature_id) : bool
 {
-	return $creature_id > 29095;
+	return $creature_id > 29095; 
 }

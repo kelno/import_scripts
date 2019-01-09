@@ -8,6 +8,7 @@ $output_filename = "creature.sql";
 $file = fopen($output_filename, "w");
 if (!$file)
 	die("Couldn't open {$output_filename}");
+fwrite($file, "START TRANSACTION;" . PHP_EOL);
 
 $start = microtime(true);
 
@@ -41,7 +42,7 @@ foreach($stmt->fetchAll() as $v) {
 			echo "NYI" . PHP_EOL; assert(false); //$sql .= UpdateSpawnId($v);
 			break;
 		case "IMPORT_WP": //Import waypoints + formation member if any (will warn if not found on sun)
-			echo "NYI" . PHP_EOL; assert(false);; //$sql .= ImportWaypointsOnly($v);
+			$converter->ReplaceWaypoints($guid);
 			break;
 		case "MOVE_UNIQUE_IMPORT_WP": //Same as REPLACE_ALL but make sure there is only one on Sunstrider
 			$results = FindAll($this->sunStore->creature_entry, "entry", $creature_id);
@@ -63,6 +64,7 @@ foreach($stmt->fetchAll() as $v) {
 	fwrite($file, PHP_EOL . PHP_EOL);
 }
 
+fwrite($file, "COMMIT;" . PHP_EOL);
 fclose($file);
 
 $duration = microtime(true) - $start;

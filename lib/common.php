@@ -28,11 +28,12 @@ class DBStore
 {
 	public $broadcast_text = []; //key is broadcast id
 	public $conditions = []; //key has NO MEANING
-	public $creature = []; //key is spawnID
+	public $creature = []; //key is spawnID TODO: should be NO MEANING
 	public $creature_addon = []; //key is spawnID
 	public $creature_entry = []; //key has NO MEANING
 	public $creature_formations = []; //key is memberGUID
-	public $creature_template = []; //key is entry TODO, should switch to no meaning
+	public $creature_model_info = []; //key is modelid
+	public $creature_template = []; //key has NO MEANING
 	public $creature_text = []; //key has NO MEANING
 	public $game_event_creature = []; //key is spawnID
 	public $gameobject = []; //key is spawnID
@@ -93,8 +94,7 @@ class DBStore
 		
 		$stmt = $conn->query("SELECT * FROM {$databaseName}.creature_template");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		foreach($stmt->fetchAll() as $v)
-			$this->creature_template[$v->entry] = $v;
+		$this->creature_template = $stmt->fetchAll();
 		
 		$stmt = $conn->query("SELECT * FROM {$databaseName}.gameobject_template");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
@@ -185,6 +185,12 @@ class DBStore
 				$this->creature_formations[$v->memberGUID]->leaderGUID = $v->memberGUID; //special handling for leader, it's always NULL in db for leader
 		}
 		
+		$index_name = $loadmode == LoadMode::sunstrider ? 'modelid' : 'DisplayID';
+		$stmt = $conn->query("SELECT * FROM {$databaseName}.creature_model_info");
+		$stmt->setFetchMode(PDO::FETCH_OBJ);
+		foreach($stmt->fetchAll() as $v)
+			$this->creature_model_info[$v->$index_name] = $v;
+			
 		$stmt = $conn->query("SELECT * FROM {$databaseName}.spawn_group");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
 		$this->spawn_group = $stmt->fetchAll();
@@ -811,13 +817,16 @@ class DBConverter
 		if(CheckAlreadyImported($creature_id))
 			return;
 		
-		if(!array_key_exists($creature_id, $this->tcStore->creature_template)) {
+		$tc_results = FindAll($this->tcStore->creature_template, "entry", $creature_id);
+		if(empty($tc_results)) {
 			echo "Smart TC {$from_entry} {$from_id} has SET_DATA on a non existing creature {$creature_id}" . PHP_EOL;
 			assert(false);
 			exit(1);
 		}
 		
-		if($this->tcStore->creature_template[$creature_id]->AIName != "SmartAI") {
+		//Only use first result... TC always has only one entry per creature
+		$tc_creature_template = $tc_results[0];
+		if($tc_creature_template->AIName != "SmartAI") {
 			echo "Smart TC {$from_entry} {$from_id} has SET_DATA on a non Smart creature {$creature_id}" . PHP_EOL;
 			assert(false);
 			exit(1);
@@ -834,14 +843,22 @@ class DBConverter
 		
 		$this->timelol("CIC2");
 		
-		$sunAIName = $this->sunStore->creature_template[$creature_id]->AIName;
-		$sunScriptName = $this->sunStore->creature_template[$creature_id]->ScriptName;
+		$sun_results = FindAll($this->sunStore->creature_template, "entry", $creature_id);
+		if(empty($sun_results)) {
+			echo "DUH?";
+			assert(false);
+			exit(1);
+		}
+		foreach($sun_results as $sun_result) {
+			$sunAIName = $sun_result->AIName;
+			$sunScriptName = $sun_result->ScriptName;
+			
+			if($sunAIName == "" && $sunScriptName == "")
+				echo "(it currently has no script)" . PHP_EOL;
+			else 
+				echo "It currently had AIName '{$sunAIName}' and ScriptName '{$sunScriptName}'" . PHP_EOL;
+		}
 		
-		if($sunAIName == "" && $sunScriptName == "")
-			echo "(it currently has no script)" . PHP_EOL;
-		else 
-			echo "It currently had AIName '{$sunAIName}' and ScriptName '{$sunScriptName}'" . PHP_EOL;
-
 		$this->CreateSmartAI($creature_id, SmartSourceType::creature);
 		$this->timelol("CIC3");
 	}
@@ -1042,7 +1059,8 @@ class DBConverter
 					$spawnID = $sun_smart_entry->target_param1;
 					if(!array_key_exists($spawnID, $this->sunStore->creature)) {
 						$creatureID = $this->tcStore->creature[$spawnID]->id;
-						$name = $this->tcStore->creature_template[$creatureID]->name;
+						$sun_results = FindAll($this->sunStore->creature_template, "entry", $creatureID);
+						$name = $sun_results[0]->name;
 						echo "Smart TC {$tc_entry} ${source_type} trying to target a creature guid {$spawnID} (id: {$creatureID}) existing only on TC" . PHP_EOL;
 						echo "/!\ Importing ALL spawns for creature id {$creatureID} ({$name}). (to avoid this, import the creature before rerunning this script)" . PHP_EOL;
 						$this->CreateReplaceAllCreature($creatureID);
@@ -1270,8 +1288,44 @@ class DBConverter
 		return true;
 	}
 	
+	function DeleteWaypointsIfUnique($path_id)
+	{
+		assert($path_id > 0);
+		$results = FindAll($this->sunStore->creature_addon, "path_id", $path_id);
+		if($results != 1) //0 or >1
+			return;
+		
+		RemoveAny($this->sunStore->waypoint_data, "id", $path_id);
+	}
+	
+	function ReplaceWaypoints(int $guid)
+	{
+		if(!array_key_exists($guid, $this->tcStore->creature_addon)) {
+			echo "ERROR: Trying to replace waypoints for creature {$guid}, but creature has no creature_addon on trinity" . PHP_EOL;
+			return;
+		}
+		$tc_creature_addon = &$this->tcStore->creature_addon[$guid];
+		if($tc_creature_addon->path_id == 0) {
+			echo "ERROR: Trying to replace waypoints for creature {$guid}, but creature has no path_id on trinity" . PHP_EOL;
+			return;
+		}
+		$sun_path_id = $this->ImportWaypoints($guid, $tc_creature_addon->path_id);
+		
+		if(array_key_exists($guid, $this->sunStore->creature_addon)) {
+			$this->DeleteWaypointsIfUnique($this->sunStore->creature_addon[$guid]->path_id);
+			$this->sunStore->creature_addon[$guid]->path_id = $sun_path_id;
+			fwrite($this->file, "UPDATE creature_addon SET path_id = {$sun_path_id} WHERE spawnID = {$guid};" . PHP_EOL);
+		} else {
+			$sun_creature_addon = new stdClass;
+			$sun_creature_addon->spawnID = $guid;
+			$sun_creature_addon->path_id = $path_id;
+			$this->sunStore->creature_addon[$guid] = $sun_creature_addon;
+			fwrite($this->file, WriteObject($this->conn, "creature_addon", $sun_creature_addon));
+		}
+	}
+	
 	//return new path_id
-	function ImportWaypoints(int $guid, int $tc_path_id, bool $includeMovementTypeUpdate = true)
+	function ImportWaypoints(int $guid, int $tc_path_id, bool $includeMovementTypeUpdate = true) : int
 	{
 		$results = FindAll($this->tcStore->waypoint_data, "id", $tc_path_id);
 		if(empty($results)) {
@@ -1282,13 +1336,13 @@ class DBConverter
 		
 		if(CheckAlreadyImported($tc_path_id)) {
 			fwrite($this->file, "-- Path {$tc_path_id} is already imported" . PHP_EOL);
-			return;
+			return $tc_path_id;
 		}
 		
 		$sunResults = FindAll($this->sunStore->waypoint_data, "id", $tc_path_id);
 		if($this->SunHasSameWaypoints($results, $sunResults)) {
 			fwrite($this->file, "-- Path {$tc_path_id} is already present and the same" . PHP_EOL);
-			return;
+			return $tc_path_id;
 		}
 		
 		$sun_path_id = $tc_path_id;
@@ -1455,15 +1509,19 @@ class DBConverter
 	
 	function ImportCreatureTemplate($id)
 	{
-		assert(array_key_exists($id, $this->tcStore->creature_template));
+		$tc_results = FindAll($this->tcStore->creature_template, "entry", $id);
+		assert(empty($tc_results) == false);
 			
-		if(array_key_exists($id, $this->sunStore->creature_template)) {
-			$sun_name = $this->sunStore->creature_template[$id]->name;
-			$tc_name = $this->tcStore->creature_template[$id]->name;
-			if($sun_name != $tc_name) {
-				echo "ERROR: Sun db already has creature {$id} ({$tc_name})... but under a different name ({$sun_name}). Is this a custom creature?" . PHP_EOL;
-				assert(false);
-				exit(1);
+		$sun_results = FindAll($this->sunStore->creature_template, "entry", $id);
+		if(!empty($sun_results)) {
+			foreach($sun_results as $sun_result) {
+				$sun_name = $sun_result->name;
+				$tc_name = $sun_result->name;
+				if($sun_name != $tc_name) {
+					echo "ERROR: Sun db already has creature {$id} ({$tc_name})... but under a different name ({$sun_name}). Is this a custom creature?" . PHP_EOL;
+					assert(false);
+					exit(1);
+				}
 			}
 			return;
 		}
@@ -1474,8 +1532,36 @@ class DBConverter
 		echo "NYI";
 		assert(false);
 		exit(1);
-		$this->sunStore->creature_template[$sun_creature_template->entry] = $sun_creature_template;
+		
+		array_push($this->sunStore->creature_template, $sun_creature_template);
 		fwrite($this->file, WriteObject($this->conn, "creature_template", $sun_creature_template));
+	}
+	
+	function HasSunModelInTemplate($creature_id, $model_id)
+	{
+		//check if template for this creature has this modelid. Also check the modelids other gender.
+		$sun_results = FindAll($this->sunStore->creature_template, "entry", $creature_id);
+		if(!empty($sun_results)) {
+			foreach($sun_results as $result) {
+				$sun_models = [
+					$result->modelid1, $result->modelid2, $result->modelid3, $result->modelid4
+				];
+				$sun_models_other_gender = [];
+				foreach($sun_models as $sun_model) {
+					if(array_key_exists($sun_model, $this->sunStore->creature_model_info)) {
+						if($other_gender_model = $this->sunStore->creature_model_info[$sun_model]->modelid_other_gender) {
+							array_push($sun_models_other_gender, $other_gender_model);
+						}
+					}
+				}
+				array_merge ($sun_models, $sun_models_other_gender);
+				if(!in_array($model_id, $sun_models)) {
+					//echo "Not the same modelid id {$creature_id}, checking modelid: {$model_id}" . PHP_EOL;
+					return false;
+				}
+			}
+		}
+		return true;
 	}
 	
 	//don't forget to call HandleFormations after this
@@ -1516,7 +1602,29 @@ class DBConverter
 		$sun_creature->spawnID = $guid;
 		$sun_creature->map = $tc_creature->map;
 		$sun_creature->spawnMask = $tc_creature->spawnMask;
-		$sun_creature->modelid = $tc_creature->modelid;
+		$keep_model_id = true;
+		if($tc_creature->modelid) {
+			if($this->HasSunModelInTemplate($tc_creature->id, $tc_creature->modelid)) {
+				fwrite($this->file, "-- Has LK modelid {$tc_creature->modelid} already in creature template, set to 0." . PHP_EOL);
+				$keep_model_id = false;
+			}
+			
+			if($keep_model_id) {
+				$model_info = array_key_exists($tc_creature->modelid, $this->sunStore->creature_model_info) ? $this->sunStore->creature_model_info[$tc_creature->modelid] : null;
+				if($model_info) {
+					if($model_info->patch > 4) {
+						//this is a LK model, what do to here? Just set model to 0 for now.
+						fwrite($this->file, "-- Has LK modelid {$tc_creature->modelid}, set to 0." . PHP_EOL);
+						$keep_model_id = 0;
+					}
+				} else {
+					echo "ERROR: Non existing model id {$tc_creature->modelid}?" . PHP_EOL;
+					assert(false);
+					exit(1);
+				}
+			}
+		}
+		$sun_creature->modelid = $keep_model_id ? ($tc_creature->modelid ? $tc_creature->modelid : "NULL") : "NULL";
 		$sun_creature->equipment_id = $tc_creature->equipment_id; //import equip ID?
 		$sun_creature->position_x = $tc_creature->position_x;
 		$sun_creature->position_y = $tc_creature->position_y;
@@ -1542,7 +1650,7 @@ class DBConverter
 		if($tc_creature_addon) {
 			$path_id = $tc_creature_addon->path_id;
 			if($path_id) {
-				$this->ImportWaypoints($guid, $path_id, false); //$pathID might be changed here
+				$path_id = $this->ImportWaypoints($guid, $path_id, false); 
 			} else {
 				$path_id = "NULL";
 			}
@@ -1591,8 +1699,15 @@ class DBConverter
 		$tc_guids = [];
 		foreach($results as $tc_creature) {
 			array_push($tc_guids, $tc_creature->guid);
-			if(!array_key_exists($tc_creature->guid, $this->sunStore->creature))
+			if(!array_key_exists($tc_creature->guid, $this->sunStore->creature)) {
+				$sun_creature_entries = FindAll($this->sunStore->creature_entry, "spawnID", $tc_creature->guid);
+				if(!empty($sun_creature_entries)) {
+					echo "Error in sun DB... there is a creature_entry without matching creature for spawnID {$tc_creature->guid}" .PHP_EOL;
+					assert(false);
+					exit(1);
+				}
 				$this->ImportTCCreature($tc_creature->guid, $patch_min, $patch_max);
+			}
 		}
 		$this->DeleteSunCreatures($creature_id, $tc_guids);
 		$this->HandleFormations();
@@ -1667,14 +1782,17 @@ class DBConverter
 			$tc_field_name = 'Data' . $i;
 			$sun_gameobject_template->$sun_field_name = $tc_gameobject_template->$tc_field_name;
 		}
-		$sun_gameobject_template->AIName = $tc_gameobject_template->AIName;
-		$sun_gameobject_template->ScriptName = $tc_gameobject_template->ScriptName;
+		$sun_gameobject_template->AIName = ""; //$tc_gameobject_template->AIName;
+		$sun_gameobject_template->ScriptName = ""; //$tc_gameobject_template->ScriptName;
 		
-		if ($sun_gameobject_template->AIName != "") 
-			echo "WARNING: Importing gameobject template {$id} which has AIName {$sun_gameobject_template->AIName}" . PHP_EOL;
+		if(IsTLKGameObject($id))
+			$sun_gameobject_template->patch = 5;
 		
-		if ($sun_gameobject_template->ScriptName != "")
-			echo "WARNING: Importing gameobject template {$id} which has ScriptName {$sun_gameobject_template->ScriptName}" . PHP_EOL;
+		if ($tc_gameobject_template->AIName != "") 
+			echo "WARNING: Importing gameobject template {$id} which has AIName {$tc_gameobject_template->AIName}" . PHP_EOL;
+		
+		if ($tc_gameobject_template->ScriptName != "")
+			echo "WARNING: Importing gameobject template {$id} which has ScriptName {$tc_gameobject_template->ScriptName}" . PHP_EOL;
 		
 		$this->sunStore->gameobject_template[$sun_gameobject_template->entry] = $sun_gameobject_template;
 		fwrite($this->file, WriteObject($this->conn, "gameobject_template", $sun_gameobject_template));
