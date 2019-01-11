@@ -1163,6 +1163,14 @@ class DBConverter
 			
 			echo "WARNING: Deleting creature (guid: {$spawn_id}) targeted by a smartscript ({$result->entryorguid}, {$result->id}). Smart scripts ref has been left as is." . PHP_EOL;
 		}
+		
+		$results = FindAll($this->sunStore->creature_addon, "spawnID", $spawn_id);
+		foreach($results as $result) {
+			if(!$result->path_id)
+				continue;
+			
+			echo "WARNING: Deleting creature (guid: {$spawn_id}) with a path (id {$result->path_id})" . PHP_EOL;
+		}
 	}
 	
 	function DeleteSunCreatures(int $creature_id, array $not_in)
