@@ -965,6 +965,8 @@ class DBConverter
 		$sun_smart_entries = [];
 		foreach($results as $smart_entry) {
 			$sun_smart_entry = $smart_entry; //copy
+			$sun_smart_entry->patch_min = 0;
+
 			switch($smart_entry->event_type)
 			{
 				case SmartEvent::WAYPOINT_START:
