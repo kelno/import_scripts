@@ -56,7 +56,7 @@ function CheckAlreadyImported(int $id) : bool
 	return false;
 }
 
-function HasAny(array &$container, int $keyname, int $value) : bool
+function HasAny(array &$container, string $keyname, $value) : bool
 {
 	foreach(array_keys($container) as $key)
 		if($container[$key]->$keyname == $value)

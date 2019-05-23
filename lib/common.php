@@ -245,7 +245,7 @@ class DBConverter
 	- sunContainer does contain key with value but has the same as tcContainer
 	Else, crash everything
 	*/
-	function CheckExists(string $tableName, string $keyname, $value)
+	function CheckExistsBroadcast(string $tableName, string $keyname, $value)
 	{
 		$sunResults = FindAll($this->sunStore->$tableName, $keyname, $value);
 		if(empty($sunResults))
@@ -258,8 +258,13 @@ class DBConverter
 			exit(1);
 		}
 		
-		if($sunResults != $tcResults) { //does this work okay? This is supposed to compare keys + values, but we don't care about keys.
+		$sunMaleText = substr($sunResults[0]->MaleText, 0, 255);
+		$tcMaleText = substr($tcResults[0]->MaleText, 0, 255);
+		if(levenshtein($sunMaleText, $tcMaleText) > 2) { //allow very similar strings
+		//if($sunResults != $tcResults) { //does this work okay? This is supposed to compare keys + values, but we don't care about keys.
 			echo "TC and SUN containers have different results for table {$tableName} and value {$value}" . PHP_EOL;
+			var_dump($sunResults);
+			var_dump($tcResults);
 			assert(false);
 			exit(1);
 		}
@@ -282,7 +287,7 @@ class DBConverter
 			assert(false);
 			exit(1);
 		}
-		$this->CheckExists("broadcast_text", "ID", $broadcast_id);
+		$this->CheckExistsBroadcast("broadcast_text", "ID", $broadcast_id);
 	}
 
 	//overrideCheckSourceEntry is for menus that changed id, condition must apply to that new menu
@@ -896,7 +901,7 @@ class DBConverter
 		$this->CreateSmartAI($gob_id, SmartSourceType::gameobject);
 	}
 
-	function timelol(int $id, int $limit = 1)
+	function timelol($id, int $limit = 1)
 	{
 		if(!$this->debug)
 			return;
@@ -1036,12 +1041,14 @@ class DBConverter
 				case SmartAction::SPAWN_SPAWNGROUP:
 				case SmartAction::DESPAWN_SPAWNGROUP:
 				case SmartAction::RESPAWN_BY_SPAWNID:
-				case SmartAction::SET_INST_DATA:
-				case SmartAction::SET_INST_DATA64:
 					echo "NYI {$tc_entry} {$sun_smart_entry->action_type}" . PHP_EOL;
 					assert(false);
 					exit(1);
 					break;
+				case SmartAction::SET_INST_DATA:
+				case SmartAction::SET_INST_DATA64:
+					//ignore those
+					continue;
 				case SmartAction::SET_DATA:
 					//special handling below
 					break;
@@ -1140,11 +1147,7 @@ class DBConverter
 		if(CheckAlreadyImported($spawn_id))
 			return;
 		
-		$sql = "DELETE ce, c1, c2, sg FROM creature_entry ce " .
-					"LEFT JOIN conditions c1 ON c1.ConditionTypeOrReference = 31 AND c1.ConditionValue1 = 3 AND c1.ConditionValue3 = {$spawn_id} " .
-					"LEFT JOIN conditions c2 ON c2.SourceTypeOrReferenceId = 22 AND c2.SourceId = 0 AND c1.SourceEntry = -{$spawn_id} " . //SourceId = SMART_SCRIPT_TYPE_CREATURE
-					"LEFT JOIN spawn_group sg ON sg.spawnId = {$spawn_id} AND spawnType = 0 " .
-					"WHERE ce.spawnID = {$spawn_id};" . PHP_EOL;
+		$sql = "CALL DeleteCreature({$spawn_id});" . PHP_EOL;
 		fwrite($this->file, $sql);
 				
 		//warn smart scripts references removal
@@ -1591,19 +1594,11 @@ class DBConverter
 			$tc_creature_addon = &$this->tcStore->creature_addon[$guid];
 		}
 		
-		//create creature_entry
-		$sun_creature_entry = new stdClass; //anonymous object
-		$sun_creature_entry->spawnID = $guid;
-		$sun_creature_entry->entry = $tc_creature->id;
-		
 		if(IsTLKCreature($tc_creature->id)) {
 			ImportCreatureTemplate($tc_creature->id);
 			if($patch_min < 5)
 				$patch_min = 5;
 		}
-		
-		array_push($this->sunStore->creature_entry, $sun_creature_entry);
-		fwrite($this->file, WriteObject($this->conn, "creature_entry", $sun_creature_entry));
 		
 		//create creature
 		$sun_creature = new stdClass;
@@ -1638,7 +1633,8 @@ class DBConverter
 		$sun_creature->position_y = $tc_creature->position_y;
 		$sun_creature->position_z = $tc_creature->position_z;
 		$sun_creature->orientation= $tc_creature->orientation;
-		$sun_creature->spawntimesecs = $tc_creature->spawntimesecs;
+		$sun_creature->spawntimesecsmin = $tc_creature->spawntimesecs;
+		$sun_creature->spawntimesecsmax = $tc_creature->spawntimesecs;
 		$sun_creature->spawndist = $tc_creature->spawndist;
 		$sun_creature->currentwaypoint = $tc_creature->currentwaypoint;
 		$sun_creature->curhealth = $tc_creature->curhealth;
@@ -1654,7 +1650,15 @@ class DBConverter
 		$this->sunStore->creature[$guid] = $sun_creature;
 		fwrite($this->file, WriteObject($this->conn, "creature", $sun_creature));
 		
-		//creature addon
+		//create creature_entry
+		$sun_creature_entry = new stdClass; //anonymous object
+		$sun_creature_entry->spawnID = $guid;
+		$sun_creature_entry->entry = $tc_creature->id;
+		
+		array_push($this->sunStore->creature_entry, $sun_creature_entry);
+		fwrite($this->file, WriteObject($this->conn, "creature_entry", $sun_creature_entry));
+		
+		//create creature_addon
 		if($tc_creature_addon) {
 			$path_id = $tc_creature_addon->path_id;
 			if($path_id) {
@@ -1829,21 +1833,22 @@ class DBConverter
 		
 		//create gameobject
 		$sun_gameobject = new stdClass;
-		$sun_gameobject->guid          = $guid;
-		$sun_gameobject->id            = $tc_gameobject->id;
-		$sun_gameobject->map           = $tc_gameobject->map;
-		$sun_gameobject->spawnMask     = $tc_gameobject->spawnMask;
-		$sun_gameobject->position_x    = $tc_gameobject->position_x;
-		$sun_gameobject->position_y    = $tc_gameobject->position_y;
-		$sun_gameobject->position_z    = $tc_gameobject->position_z;
-		$sun_gameobject->rotation0     = $tc_gameobject->rotation0;
-		$sun_gameobject->rotation1     = $tc_gameobject->rotation1;
-		$sun_gameobject->rotation2     = $tc_gameobject->rotation2;
-		$sun_gameobject->rotation3     = $tc_gameobject->rotation3;
-		$sun_gameobject->spawntimesecs = $tc_gameobject->spawntimesecs;
-		$sun_gameobject->animprogress  = $tc_gameobject->animprogress;
-		$sun_gameobject->state         = $tc_gameobject->state;
-		$sun_gameobject->ScriptName    = $tc_gameobject->ScriptName;
+		$sun_gameobject->guid             = $guid;
+		$sun_gameobject->id               = $tc_gameobject->id;
+		$sun_gameobject->map              = $tc_gameobject->map;
+		$sun_gameobject->spawnMask        = $tc_gameobject->spawnMask;
+		$sun_gameobject->position_x       = $tc_gameobject->position_x;
+		$sun_gameobject->position_y       = $tc_gameobject->position_y;
+		$sun_gameobject->position_z       = $tc_gameobject->position_z;
+		$sun_gameobject->rotation0        = $tc_gameobject->rotation0;
+		$sun_gameobject->rotation1        = $tc_gameobject->rotation1;
+		$sun_gameobject->rotation2        = $tc_gameobject->rotation2;
+		$sun_gameobject->rotation3        = $tc_gameobject->rotation3;
+		$sun_gameobject->spawntimesecsmin = $tc_gameobject->spawntimesecs;
+		$sun_gameobject->spawntimesecsmax = $tc_gameobject->spawntimesecs;
+		$sun_gameobject->animprogress     = $tc_gameobject->animprogress;
+		$sun_gameobject->state            = $tc_gameobject->state;
+		$sun_gameobject->ScriptName       = $tc_gameobject->ScriptName;
 		if(IsTLKMap($sun_gameobject->map))
 			$patch_min = 5;
 		$sun_gameobject->patch_min     = $patch_min;
@@ -1870,11 +1875,7 @@ class DBConverter
 		if(CheckAlreadyImported($spawn_id))
 			return;
 		
-		$sql = "DELETE g, c1, c2, sg FROM gameobject g " .
-					"LEFT JOIN conditions c1 ON c1.ConditionTypeOrReference = 31 AND c1.ConditionValue1 = 5 AND c1.ConditionValue3 = {$spawn_id} " .
-					"LEFT JOIN conditions c2 ON c1.SourceEntry = -{$spawn_id} AND c2.SourceId = 1 AND c2.SourceTypeOrReferenceId = 22 " . //SourceId = SMART_SCRIPT_TYPE_GAMEOBJECT
-					"LEFT JOIN spawn_group sg ON sg.spawnId = {$spawn_id} AND spawnType = 1 " . //gob type
-					"WHERE g.guid = {$spawn_id};" . PHP_EOL;
+		$sql = "CALL DeleteGameObject({$spawn_id});" . PHP_EOL;
 		fwrite($this->file, $sql);
 				
 		//warn smart scripts references removal

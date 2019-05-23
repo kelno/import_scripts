@@ -50,9 +50,9 @@ foreach($stmt->fetchAll() as $v) {
 	fwrite($file, "-- Importing creature gossip with entry {$v['entry']} ({$v['name']}) with import type {$v['import']}" . PHP_EOL);
 	switch($v["import"])
 	{
-		case "SMART": //GOSSIP+SMART
+		case "SMART": //SMART
 			$converter->CreateSmartAI($v['entry'], SmartSourceType::creature);
-			//nobreak
+			break;
 		case "GOSSIP": 
 			$setflag = $v['npcflag'] & 1;
 			$menu_id = $v['gossip_menu_id'];

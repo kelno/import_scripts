@@ -22,13 +22,13 @@ ALTER TABLE `trinityworld`.`gameobject`
 **gossips_import.php**:  
  Import from TC creature_template table
  
-**gob_import.php**:
-  mport from TC gameobject table
+**gob_import.php**:  
+ Import from TC gameobject table
  
 **creature_import_old.php**:   
  Old version of creature_import.php
  
-**convert_game_event**:
+**convert_game_event**:  
  Old script to match sun game events to tc game events
 
  

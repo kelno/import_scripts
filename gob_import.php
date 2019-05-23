@@ -32,7 +32,7 @@ foreach($stmt->fetchAll() as $v) {
 	switch($v["import"])
 	{
 		case "IMPORT": //Straight import the gameobject, no delete of anything. 
-			echo "NYI" . PHP_EOL; assert(false);
+			$converter->ImportTCGameObject($guid);
 			break;
 		case "REPLACE_ALL": //Remove all gameobjects with this id from sun, and replace with all gameobjects from TC with this id
 			$converter->CreateReplaceAllGameObject($gob_id);

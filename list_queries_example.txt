@@ -1,0 +1,31 @@
+Examples:
+
+SELECT tc.*
+FROM trinityworld.creature tc
+JOIN world.creature_template ct ON ct.entry = tc.id
+LEFT JOIN world.creature c ON c.spawnId = tc.guid
+WHERE c.spawnId IS NULL
+AND tc.map IN (0,1,530)
+AND tc.id IN (SELECT id FROM trinityworld.creature GROUP BY id HAVING COUNT(*) = 1) 
+
+SELECT tc.*
+FROM trinityworld.gameobject tc
+JOIN world.gameobject_template gt ON gt.entry = tc.id
+LEFT JOIN world.gameobject g ON g.guid = tc.guid
+WHERE g.guid IS NULL
+AND tc.map IN (0, 1, 530)
+AND tc.id IN (SELECT id FROM trinityworld.gameobject GROUP BY id HAVING COUNT(*) = 1) 
+AND tc.id NOT IN (SELECT id FROM world.gameobject GROUP BY id HAVING COUNT(*) = 1) 
+
+UPDATE trinityworld.gameobject tc
+JOIN world.gameobject_template gt ON gt.entry = tc.id
+LEFT JOIN world.gameobject g ON g.guid = tc.guid
+SET import = "REPLACE_ALL" 
+WHERE g.guid IS NULL 
+AND tc.map IN (0, 1, 530)
+AND tc.id IN (SELECT id FROM trinityworld.gameobject GROUP BY id HAVING COUNT(*) = 1) 
+AND tc.id NOT IN (SELECT id FROM world.gameobject GROUP BY id HAVING COUNT(*) = 1) 
+
+
+
+UPDATE trinityworld.gameobject SET IMPORT = "IGNORE" WHERE IMPORT = "REPLACE_ALL"
