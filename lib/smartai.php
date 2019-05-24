@@ -227,6 +227,7 @@ abstract class SmartAction
 	const DESPAWN_SPAWNGROUP                 = 132;
 	const RESPAWN_BY_SPAWNID                 = 133;
 	const INVOKER_CAST                       = 134;
+	const SMART_ACTION_PLAY_CINEMATIC        = 135;
 }
 
 abstract class SmartTarget

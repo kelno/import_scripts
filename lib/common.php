@@ -23,7 +23,46 @@ abstract class LoadMode
 	const sunstrider = 0;
 	const trinitycore = 1;
 }
-	
+
+class ImportException extends Exception { }
+
+$debug = false;
+$errors = 0;
+$warnings = 0;
+function LogError($msg)
+{
+	global $errors, $file;
+
+	echo "ERROR: {$msg}" . PHP_EOL;
+	fwrite($file, "-- ERROR {$msg}" . PHP_EOL);
+	++$errors;
+}
+
+function LogWarning($msg)
+{
+	global $warnings, $file;
+
+	echo "WARNING: {$msg}" . PHP_EOL;
+	fwrite($file, "-- WARNING {$msg}" . PHP_EOL);
+	++$warnings;
+}
+function LogNotice($msg)
+{
+	global $file;
+
+	echo "NOTICE: {$msg}" . PHP_EOL;
+	fwrite($file, "-- NOTICE {$msg}" . PHP_EOL);
+}
+function LogDebug($msg)
+{
+	global $debug, $file;
+
+	if ($debug)
+		echo "{$msg}" . PHP_EOL;
+
+	fwrite($file, "-- DEBUG {$msg}" . PHP_EOL);
+}
+
 class DBStore
 {
 	public $broadcast_text = []; //key is broadcast id
@@ -33,6 +72,7 @@ class DBStore
 	public $creature_entry = []; //key has NO MEANING
 	public $creature_formations = []; //key is memberGUID
 	public $creature_model_info = []; //key is modelid
+	public $creature_summon_groups = []; //key has NO MEANING
 	public $creature_template = []; //key has NO MEANING
 	public $creature_text = []; //key has NO MEANING
 	public $game_event_creature = []; //key is spawnID
@@ -105,6 +145,10 @@ class DBStore
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
 		$this->conditions = $stmt->fetchAll();
 		
+		$stmt = $conn->query("SELECT * FROM {$databaseName}.creature_summon_groups");
+		$stmt->setFetchMode(PDO::FETCH_OBJ);
+		$this->creature_summon_groups = $stmt->fetchAll();
+
 		$stmt = $conn->query("SELECT * FROM {$databaseName}.points_of_interest");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
 		$this->points_of_interest = $stmt->fetchAll();
@@ -222,14 +266,11 @@ class DBConverter
 	public $tcStore;
 	public $sunStore;
 	
-	public $debug = false;
-	
-	function __construct(&$file, bool $_debug = false)
+	function __construct(&$file)
 	{
 		global $sunWorld, $tcWorld, $login, $password;
 		
 		$this->file = $file;
-		$this->debug = $_debug;
 		
 		// Connect
 		//$this->conn = new PDO("mysql:host=localhost;dbname=$sunWorld", $login, $password);
@@ -252,21 +293,16 @@ class DBConverter
 			return;
 		
 		$tcResults = FindAll($this->tcStore->$tableName, $keyname, $value);
-		if(empty($tcResults)) {
-			echo "Checked for existence but TC has no value for this container?" . PHP_EOL;
-			assert(false);
-			exit(1);
-		}
+		if(empty($tcResults))
+			throw new ImportException("Checked for broadcast existence but TC has no value?");
 		
 		$sunMaleText = substr($sunResults[0]->MaleText, 0, 255);
 		$tcMaleText = substr($tcResults[0]->MaleText, 0, 255);
 		if(levenshtein($sunMaleText, $tcMaleText) > 2) { //allow very similar strings
 		//if($sunResults != $tcResults) { //does this work okay? This is supposed to compare keys + values, but we don't care about keys.
-			echo "TC and SUN containers have different results for table {$tableName} and value {$value}" . PHP_EOL;
-			var_dump($sunResults);
-			var_dump($tcResults);
-			assert(false);
-			exit(1);
+			//var_dump($sunResults);
+			//var_dump($tcResults);
+			throw new ImportException("TC and SUN containers have different results for table {$tableName} and value {$value}");
 		}
 		
 		//OK
@@ -276,17 +312,11 @@ class DBConverter
 	function CheckBroadcast(int $broadcast_id)
 	{
 		if(!array_key_exists($broadcast_id, $this->tcStore->broadcast_text))
-		{
-			echo "ERROR: BroadcastText $broadcast_id does not exists in TC db" . PHP_EOL;
-			assert(false);
-			exit(1);
-		}
+			throw new ImportException("BroadcastText $broadcast_id does not exists in TC db");
+
 		if(!array_key_exists($broadcast_id, $this->sunStore->broadcast_text))
-		{
-			echo "ERROR: BroadcastText $broadcast_id does not exists in Sun db" . PHP_EOL;
-			assert(false);
-			exit(1);
-		}
+			throw new ImportException("BroadcastText $broadcast_id does not exists in Sun db");
+
 		$this->CheckExistsBroadcast("broadcast_text", "ID", $broadcast_id);
 	}
 
@@ -332,7 +362,7 @@ class DBConverter
 			   continue;
 		   
 			if($this->SunHasCondition($this->tcStore->conditions[$key], $sun_menu_id)) {
-				fwrite($this->file, "-- Sun db already has this condition (tc menu {$tc_menu_id}, sun menu {$sun_menu_id})" . PHP_EOL);
+				LogDebug("Sun db already has this condition (tc menu {$tc_menu_id}, sun menu {$sun_menu_id})");
 				continue;
 			}
 			
@@ -361,7 +391,7 @@ class DBConverter
 			   continue;
 		   
 			if($this->SunHasCondition($this->tcStore->conditions[$key], $sun_menu_id)) {
-				fwrite($this->file, "-- Sun db already has this condition (tc menu {$tc_menu_id}, sun menu {$sun_menu_id})" . PHP_EOL);
+				LogDebug("Sun db already has this condition (tc menu {$tc_menu_id}, sun menu {$sun_menu_id})");
 				continue;
 			}
 			
@@ -380,17 +410,16 @@ class DBConverter
 	function CreateText(int $tc_text_id) : int
 	{
 		if(array_key_exists($tc_text_id, $this->movedTCTexts)) {
-			fwrite($this->file, "-- Text {$tc_text_id} is already imported as " . $this->movedTCTexts[$tc_text_id] . PHP_EOL);
+			LogDebug("Text {$tc_text_id} is already imported as " . $this->movedTCTexts[$tc_text_id]);
 			return $this->movedTCTexts[$tc_text_id];
 		}
 		
 		if(CheckAlreadyImported($tc_text_id)) {
-			fwrite($this->file, "-- Text {$tc_text_id} is already imported" . PHP_EOL);
+			LogDebug("Text {$tc_text_id} is already imported");
 			return $tc_text_id;
 		}
 		
-		if($this->debug)
-			echo "Importing text $tc_text_id" .PHP_EOL;
+		LogDebug("Importing text {$tc_text_id}");
 		
 		if(!array_key_exists($tc_text_id, $this->tcStore->gossip_text)) {
 			echo "TextId {$tc_text_id} does not exists in TC db?" . PHP_EOL;
@@ -404,7 +433,7 @@ class DBConverter
 			$sun_text = $this->sunStore->gossip_text[$tc_text_id];
 			if($sun_text->text0_0 == $tc_text->text0_0 && $sun_text->text0_1 == $tc_text->text0_1) {
 				array_push($this->reusedSunTexts, $tc_text_id);
-				fwrite($this->file, "-- Text {$tc_text_id} already present in Sun DB" . PHP_EOL); //same text, stop here
+				LogDebug("Text {$tc_text_id} already present in Sun DB"); //same text, stop here
 				return $tc_text_id;
 			}
 			$sun_text_id = max(array_keys($this->sunStore->gossip_text)) + 1;
@@ -449,7 +478,7 @@ class DBConverter
 	function CreatePOI(int $poi_id)
 	{
 		if(CheckAlreadyImported($poi_id)) {
-			fwrite($this->file, "-- POI {$poi_id} is already imported" . PHP_EOL);
+			LogDebug("POI {$poi_id} is already imported");
 			return;
 		}
 		
@@ -465,7 +494,7 @@ class DBConverter
 		//we assume if we have a poi with this id, it's already the same
 		$results = FindAll($this->sunStore->points_of_interest, "ID", $poi_id);
 		if(count($results) > 0) {
-			fwrite($this->file, "-- POI {$poi_id} already present in sun db" . PHP_EOL);
+			LogDebug("POI {$poi_id} already present in sun db");
 			return;
 		}
 		
@@ -485,7 +514,7 @@ class DBConverter
 	function CreateMenuOptions(int $tc_menu_id, int $sun_menu_id)
 	{
 		if(CheckAlreadyImported($tc_menu_id)) {
-			fwrite($this->file, "-- Menu options for {$tc_menu_id} are already imported" . PHP_EOL);
+			LogDebug("Menu options for {$tc_menu_id} are already imported");
 			return;
 		}
 		
@@ -494,9 +523,7 @@ class DBConverter
 			return; //no menu options found, this is a normal case
 		
 		foreach($results as $tc_option) {
-			
-			if($this->debug)
-				echo "Importing tc menu option {$tc_menu_id}|{$tc_option->OptionID} into sun menu {$sun_menu_id}" .PHP_EOL;
+			LogDebug("Importing tc menu option {$tc_menu_id}|{$tc_option->OptionID} into sun menu {$sun_menu_id}");
 			
 			$sun_option = new stdClass; //anonymous object
 			$sun_option->MenuID = $sun_menu_id;
@@ -588,12 +615,12 @@ class DBConverter
 	{
 		if(array_key_exists($tc_menu_id, $this->convertedTCMenus))
 		{
-			fwrite($this->file, "-- Menu {$tc_menu_id} is already imported as " . $this->convertedTCMenus[$tc_menu_id] . PHP_EOL);
+			LogDebug("Menu {$tc_menu_id} is already imported as " . $this->convertedTCMenus[$tc_menu_id]);
 			return $this->convertedTCMenus[$tc_menu_id];
 		}
 		
 		if(CheckAlreadyImported($tc_menu_id)) {
-			fwrite($this->file, "-- Menu {$tc_menu_id} is already imported" . PHP_EOL);
+			LogDebug("Menu {$tc_menu_id} is already imported");
 			return $tc_menu_id;
 		}
 		
@@ -613,7 +640,7 @@ class DBConverter
 			//would be very complicated to compare menus... just import a new one
 			$sun_menu_id = GetHighest($this->sunStore->gossip_menu, "MenuID") + 1;
 			$this->convertedTCMenus[$tc_menu_id] = $sun_menu_id;
-			fwrite($this->file, "-- Importing menu {$tc_menu_id} as {$sun_menu_id}".PHP_EOL); 
+			LogDebug("Importing menu {$tc_menu_id} as {$sun_menu_id}");
 		}
 		else
 			$sun_menu_id = $tc_menu_id;
@@ -623,8 +650,7 @@ class DBConverter
 		foreach($results as $tc_menu) {
 			$tc_text_id = $tc_menu->TextID;
 			
-			if($this->debug)
-				echo "Importing tc menu {$tc_menu_id} (text {$tc_text_id}) into sun menu {$sun_menu_id}" .PHP_EOL;
+			LogDebug("Importing tc menu {$tc_menu_id} (text {$tc_text_id}) into sun menu {$sun_menu_id}");
 			
 			$sun_text_id = $this->CreateText($tc_text_id);
 			assert($sun_text_id != '' && $sun_text_id > 0);
@@ -728,18 +754,15 @@ class DBConverter
 	function CreateCreatureText(int $tc_entry)
 	{
 		if(CheckAlreadyImported($tc_entry)) {
-			fwrite($this->file, "-- Creature text {$tc_entry} is already imported" . PHP_EOL);
+			LogDebug("Creature text {$tc_entry} is already imported");
 			return;
 		}
 		
 		$this->timelol("CCT1");
 		
 		$results = FindAll($this->tcStore->creature_text, "CreatureID", $tc_entry);
-		if(empty($results)) {
-			echo "ERROR: Could not find TC creature_text for creature id {$tc_entry}" . PHP_EOL;
-			assert(false);
-			exit(1);
-		}
+		if(empty($results)) 
+			throw new ImportException("ERROR: Could not find TC creature_text for creature id {$tc_entry}");
 		
 		$sql = "DELETE FROM creature_text WHERE CreatureID = {$tc_entry};" . PHP_EOL;
 		fwrite($this->file, $sql);
@@ -758,7 +781,7 @@ class DBConverter
 	function CreateSmartConditions(int $tc_entry, int $source_type)
 	{
 		if(CheckAlreadyImported($tc_entry + $source_type << 28)) { //max entry is 30.501.000 (smaller number with 28 bits shift is 268.435.456)
-			fwrite($this->file, "-- Smart condition {$tc_entry} {$source_type} is already imported" . PHP_EOL);
+			LogDebug("Smart condition {$tc_entry} {$source_type} is already imported");
 			return;
 		}
 		
@@ -777,7 +800,7 @@ class DBConverter
 			   continue;
 		   
 			if($this->SunHasCondition($this->tcStore->conditions[$key])) {
-				fwrite($this->file, "-- Sun db already has this condition (entry: {$tc_entry})" . PHP_EOL);
+				LogDebug("Sun db already has this condition (entry: {$tc_entry})");
 				continue;
 			}
 			$sun_condition = $this->tcStore->conditions[$key]; //copy
@@ -787,19 +810,53 @@ class DBConverter
 		}
 	}
 
+	function ImportSummonGroup(int $npcEntry, int $groupID)
+	{
+		if(CheckAlreadyImported($npcEntry + $groupID << 28)) {
+			LogDebug("Summon group for npc {$npcEntry} group {$groupID} is already imported");
+			return;
+		}
+		
+		// could be improved, currently we just port everything and ignore group
+		$results = FindAll($this->tcStore->creature_summon_groups, "summonerId", $npcEntry);
+		if(empty($results))
+			throw new ImportException("Could not find TC summon group {$npcEntry}");
+
+		$sunResults = FindAll($this->sunStore->creature_summon_groups, "summonerId", $npcEntry);
+		if ($results == $sunResults) {
+			LogDebug("Summon group for npc {$npcEntry} group {$groupID} is already existing and identical");
+			return;
+		}
+	
+		$sql = "DELETE FROM creature_summon_groups WHERE summonerId = {$npcEntry};" . PHP_EOL;
+		fwrite($this->file, $sql);
+		RemoveAny($this->sunStore->creature_summon_groups, "summonerId", $npcEntry);
+
+		foreach($results as $tc_group) {
+			array_push($this->sunStore->creature_summon_groups, $tc_group);
+			fwrite($this->file, WriteObject($this->conn, "creature_summon_groups", $tc_group)); 
+
+			$entry = $tc_group->entry;
+			$dummy = 0;
+			try {
+				$this->CheckImportCreatureTemplate($entry, $dummy, false);
+			} catch (ImportException $e) {
+				LogError("Summon group {$npcEntry} group {$groupID}: Failed to import smart for summoned creature: {$e->getMessage()}");
+				continue;
+			}
+		}
+	}
+
 	function CreateSmartWaypoints(int $path_id)
 	{
 		if(CheckAlreadyImported($path_id)) {
-			fwrite($this->file, "-- Smart Waypoints {$path_id} are already imported" . PHP_EOL);
+			LogDebug("Smart Waypoints {$path_id} are already imported");
 			return;
 		}
 		
 		$results = FindAll($this->tcStore->waypoints, "entry", $path_id);
-		if(empty($results)) {
-			echo "ERROR: Could not find TC waypoints {$path_id}" . PHP_EOL;
-			assert(false);
-			exit(1);
-		}
+		if(empty($results)) 
+			throw new ImportException("Could not find TC waypoints {$path_id}");
 		
 		$sunResults = FindAll($this->sunStore->waypoints, "entry", $path_id);
 		if(!empty($sunResults)) {
@@ -817,32 +874,29 @@ class DBConverter
 		}
 	}
 
-	function CheckImportCreature(int $from_entry, int $from_id, int $creature_id) 
+	function CheckImportCreatureTemplate(int $creature_id, int& $patch, bool $hasToBeSmart) 
 	{
 		if(CheckAlreadyImported($creature_id))
 			return;
 		
 		$tc_results = FindAll($this->tcStore->creature_template, "entry", $creature_id);
-		if(empty($tc_results)) {
-			echo "Smart TC {$from_entry} {$from_id} has SET_DATA on a non existing creature {$creature_id}" . PHP_EOL;
-			assert(false);
-			exit(1);
-		}
+		if(empty($tc_results))
+			throw new ImportException("Has a reference on a non existing creature {$creature_id}");
 		
 		//Only use first result... TC always has only one entry per creature
 		$tc_creature_template = $tc_results[0];
 		if($tc_creature_template->AIName != "SmartAI") {
-			echo "Smart TC {$from_entry} {$from_id} has SET_DATA on a non Smart creature {$creature_id}" . PHP_EOL;
-			assert(false);
-			exit(1);
+			if ($hasToBeSmart)
+				throw new ImportException("Has a reference on a non Smart creature {$creature_id}");
+			else 
+				return;
 		}
 		
 		$this->timelol("CIC1");
 		
-		echo "Smart TC {$from_entry} {$from_id} summon/targets creature id {$creature_id}, also importing it. "; //... continue this line later
 		if(CheckIdentical($this->sunStore->smart_scripts, $this->tcStore->smart_scripts, "entryorguid", $creature_id)) {
-			echo "Already identical, skipping" . PHP_EOL;
-			fwrite($this->file, "-- SmartAI for creature {$creature_id} is already in db and identical" . PHP_EOL); //already imported
+			//echo "Already identical, skipping" . PHP_EOL;
+			LogDebug("SmartAI for creature {$creature_id} is already in db and identical.");
 			return;
 		}
 		
@@ -850,18 +904,20 @@ class DBConverter
 		
 		$sun_results = FindAll($this->sunStore->creature_template, "entry", $creature_id);
 		if(empty($sun_results)) {
-			echo "DUH?";
-			assert(false);
-			exit(1);
+			echo PHP_EOL;
+			LogError("Targeted creature {$creature_id} doesn't exists in our database");
+			$patch = 5;
+			return;
 		}
+		echo "Importing referenced summon/targets creature id {$creature_id}, "; //... continue this line later
 		foreach($sun_results as $sun_result) {
 			$sunAIName = $sun_result->AIName;
 			$sunScriptName = $sun_result->ScriptName;
 			
 			if($sunAIName == "" && $sunScriptName == "")
-				echo "(it currently has no script)" . PHP_EOL;
+				echo "it currently has no script." . PHP_EOL;
 			else 
-				echo "It currently had AIName '{$sunAIName}' and ScriptName '{$sunScriptName}'" . PHP_EOL;
+				echo "it currently had AIName '{$sunAIName}' and ScriptName '{$sunScriptName}'." . PHP_EOL;
 		}
 		
 		$this->CreateSmartAI($creature_id, SmartSourceType::creature);
@@ -870,23 +926,17 @@ class DBConverter
 
 	function CheckImportGameObject(int $from_entry, int $from_id, int $gob_id)
 	{
-		if(!array_key_exists($gob_id, $this->tcStore->gameobject_template)) {
-			echo "Smart TC {$from_entry} has SET_DATA on a non existing gameobject {$gob_id}" . PHP_EOL;
-			assert(false);
-			exit(1);
-		}
+		if(!array_key_exists($gob_id, $this->tcStore->gameobject_template))
+			throw new ImportException("Smart TC {$from_entry} has SET_DATA on a non existing gameobject {$gob_id}");
 		
-		if($this->tcStore->gameobject_template[$gob_id]->AIName != "SmartAI") {
-			echo "Smart TC {$from_entry}has SET_DATA on a non Smart gameobject {$gob_id}" . PHP_EOL;
-			assert(false);
-			exit(1);
-		}
+		if($this->tcStore->gameobject_template[$gob_id]->AIName != "SmartAI")
+			throw new ImportException("Smart TC {$from_entry}has SET_DATA on a non Smart gameobject {$gob_id}");
 		
 		echo "Smart TC {$from_entry} targets gameobject id {$gob_id}, also importing it. "; //... continue this line later
 		
 		if(CheckIdentical($this->sunStore->smart_scripts, $this->tcStore->smart_scripts, "entryorguid", $gob_id)) {
-			echo "Already identical, skipping" . PHP_EOL;
-			fwrite($this->file, "-- SmartAI for gob {$gob_id} is already in db and identical" . PHP_EOL); //already imported
+			//echo "Already identical, skipping" . PHP_EOL;
+			LogDebug("SmartAI for gob {$gob_id} is already in db and identical.");
 			return;
 		}
 		
@@ -894,16 +944,17 @@ class DBConverter
 		$sunScriptName = $this->sunStore->gameobject_template[$creature_id]->ScriptName;
 		
 		if($sunAIName == "" && $sunScriptName == "")
-			echo "(it currently has no script)" . PHP_EOL;
+			echo "it currently has no script." . PHP_EOL;
 		else 
-			echo "It currently had AIName '{$sunAIName}' and ScriptName '{$sunScriptName}" . PHP_EOL;
+			echo "It currently had AIName '{$sunAIName}' and ScriptName '{$sunScriptName}." . PHP_EOL;
 
 		$this->CreateSmartAI($gob_id, SmartSourceType::gameobject);
 	}
 
 	function timelol($id, int $limit = 1)
 	{
-		if(!$this->debug)
+		global $debug;
+		if(!$debug)
 			return;
 		
 		static $start = null;
@@ -918,10 +969,33 @@ class DBConverter
 		$start = microtime(true);
 	}
 
+	// true if we should keep the action using this
+	function CheckImportCreature(int $spawnID)
+	{
+		if(!array_key_exists($spawnID, $this->sunStore->creature)) {
+			if(!array_key_exists($spawnID, $this->tcStore->creature)) {
+				LogWarning("Smart TC {$tc_entry} ${source_type} trying to target a non existing creature guid {$spawnID} on their own db... this is a tc db error. Ignoring.");
+				return false;
+			}
+			$creatureID = $this->tcStore->creature[$spawnID]->id;
+			$sun_results = FindAll($this->sunStore->creature_template, "entry", $creatureID);
+			if (empty($sun_results))
+			{
+				LogWarning("Smart TC {$tc_entry} ${source_type} trying to target a creature guid {$spawnID} (id: {$creatureID}) existing only on TC AND with an entry not existing on TBC. Ignoring.");
+				return false;
+			}
+			$name = $sun_results[0]->name;
+			echo "Smart TC {$tc_entry} ${source_type} trying to target a creature guid {$spawnID} (id: {$creatureID}) existing only on TC" . PHP_EOL;
+			echo "/!\ Importing ALL spawns for creature id {$creatureID} ({$name}). (to avoid this, import the creature before rerunning this script)" . PHP_EOL;
+			$this->CreateReplaceAllCreature($creatureID);
+		}
+		return true;
+	}
+
 	function CreateSmartAI(int $tc_entry, int $source_type, int $action_list_origin = 0)
 	{
 		if(CheckAlreadyImported($tc_entry + $source_type << 28)) { //max entry is 30.501.000 (smaller number with 28 bits shift is 268.435.456)
-			fwrite($this->file, "-- SmartAI {$tc_entry} {$source_type} is already imported" . PHP_EOL);
+			LogDebug("SmartAI {$tc_entry} {$source_type} is already imported");
 			return;
 		}
 		
@@ -954,11 +1028,8 @@ class DBConverter
 		$this->timelol("2");
 		
 		$results = $this->FindAllSmart(false, $tc_entry, $source_type);
-		if(empty($results)) {
-			echo "ERROR: Failed to find TC SmartAI with entry {$tc_entry} and type {$source_type}" . PHP_EOL;
-			assert(false);
-			exit(1);
-		}
+		if(empty($results))
+			throw new ImportException("Failed to find TC SmartAI with entry {$tc_entry} and type {$source_type}");
 		
 		$this->timelol("3");
 		
@@ -976,7 +1047,14 @@ class DBConverter
 				case SmartEvent::WAYPOINT_STOPPED:
 				case SmartEvent::WAYPOINT_ENDED: 
 					if($path_id = $smart_entry->event_param2)
-						$this->CreateSmartWaypoints($path_id);
+					{
+						try {
+							$this->CreateSmartWaypoints($path_id);
+						} catch (ImportException $e) {
+							LogError("Failed to create waypoints for entry {$action_list_origin} {$tc_entry} and id {$sun_smart_entry->id}: {$e->getMessage()}");
+							continue;
+						}
+					}
 					break;
 				case SmartEvent::GOSSIP_SELECT:
 					if($tc_menu_id = $smart_entry->event_param1) {
@@ -995,7 +1073,57 @@ class DBConverter
 			{
 				case SmartAction::TALK:
 				case SmartAction::SIMPLE_TALK:
-					$this->CreateCreatureText($action_list_origin ? $action_list_origin : $tc_entry);
+					$import_id = $action_list_origin ? $action_list_origin : $tc_entry;
+					$useTalkTarget = $sun_smart_entry->action_type == SmartAction::TALK && $sun_smart_entry->action_param3;
+					if (!$useTalkTarget) //the arguments makes it so we talk with specified target (does not make target talk)
+					{
+						switch($sun_smart_entry->target_type)
+						{
+							case SmartTarget::NONE:
+							case SmartTarget::SELF:
+								break;
+							case SmartTarget::CREATURE_DISTANCE:
+							case SmartTarget::CLOSEST_CREATURE:
+							case SmartTarget::CREATURE_RANGE:
+								$import_id = $sun_smart_entry->target_param1;
+								if (!$import_id)
+									throw new ImportException("Talk target {$sun_smart_entry->target_type} NYI for entry {$action_list_origin} {$tc_entry} and id {$sun_smart_entry->id}. Wut?");
+								break;
+							case SmartTarget::CREATURE_GUID:
+								//we handle it only if entry is specified, guid nyi
+								$import_id = $sun_smart_entry->target_param2;
+								if (!$import_id)
+									throw new ImportException("Talk target {$sun_smart_entry->target_type} NYI for entry {$action_list_origin} {$tc_entry} and id {$sun_smart_entry->id}. Need to implement guid handling");
+								break;
+							case SmartTarget::CLOSEST_PLAYER:
+							case SmartTarget::PLAYER_DISTANCE:
+							case SmartTarget::PLAYER_RANGE:
+								//in this case, WE talk
+								break;
+							case SmartTarget::ACTION_INVOKER:
+							case SmartTarget::STORED:
+								LogWarning("Talk target {$sun_smart_entry->target_type} for entry {$action_list_origin} {$tc_entry} and id {$sun_smart_entry->id} cannot be automatically imported. Referenced creature might not have text.");
+								$import_id = 0; //don't import any text
+								break; //but still import this smart line in this case
+							case SmartTarget::CLOSEST_ENEMY:
+							case SmartTarget::CLOSEST_FRIENDLY:
+								//doesnt make any sense to use here... this is very probably a TC error
+								LogWarning("Entry {$action_list_origin} {$tc_entry} id {$sun_smart_entry->id} uses target CLOSEST_ENEMY/CLOSEST_FRIENDLY without useTalkTarget... Makes no sense, let's enable useTalkTarget instead.");
+								//import normally
+								break;
+							default:
+								throw new ImportException("Talk target {$sun_smart_entry->target_type} NYI for entry {$action_list_origin} {$tc_entry} and id {$sun_smart_entry->id}");
+						}
+					}
+					if ($import_id)
+					{
+						try {
+							$this->CreateCreatureText($import_id);
+						} catch (ImportException $e) {
+							LogError("Failed to import text talk with target {$sun_smart_entry->target_type} for entry {$action_list_origin} {$tc_entry} and id {$sun_smart_entry->id}: {$e->getMessage()}");
+							continue;
+						}
+					}
 					break;
 				case SmartAction::CAST:
 					$spell_id = $sun_smart_entry->action_param1;
@@ -1028,24 +1156,44 @@ class DBConverter
 					break;
 				case SmartAction::WP_START:
 					$path_id = $sun_smart_entry->action_param2;
-					$this->CreateSmartWaypoints($path_id);
+					try {
+						$this->CreateSmartWaypoints($path_id);
+					} catch (ImportException $e) {
+						LogError("Failed to create waypoints for entry {$action_list_origin} {$tc_entry} and id {$sun_smart_entry->id}: {$e->getMessage()}");
+						continue;
+					}
 					break;
 				case SmartAction::SUMMON_CREATURE:
 					$summonID = $sun_smart_entry->action_param1;
 					//echo "SmartAI {$tc_entry} ${source_type} does summon a creature {$summonID}" . PHP_EOL;
-					$this->CheckImportCreature($tc_entry, $sun_smart_entry->id, $summonID);
+					try {
+						$this->CheckImportCreatureTemplate($summonID, $sun_smart_entry->patch_min, false);
+					} catch (ImportException $e) {
+						LogError("Smart TC {$tc_entry} {$sun_smart_entry->id}: Failed to import smart for summoned creature: {$e->getMessage()}");
+						continue;
+					}
 					break;
-				case SmartAction::SUMMON_CREATURE_GROUP:
 				case SmartAction::GAME_EVENT_STOP:
 				case SmartAction::GAME_EVENT_START:
 				case SmartAction::START_CLOSEST_WAYPOINT:
 				case SmartAction::LOAD_EQUIPMENT:
 				case SmartAction::SPAWN_SPAWNGROUP:
 				case SmartAction::DESPAWN_SPAWNGROUP:
+					throw new ImportException("NYI {$tc_entry} action {$sun_smart_entry->action_type}");
 				case SmartAction::RESPAWN_BY_SPAWNID:
-					echo "NYI {$tc_entry} {$sun_smart_entry->action_type}" . PHP_EOL;
-					assert(false);
-					exit(1);
+					$shouldKeep = false;
+					$spawnType = $sun_smart_entry->action_param1;
+					$spawnID = $sun_smart_entry->action_param2;
+					if ($spawnType = 0) //0 == creature
+						$shouldKeep = $this->CheckImportCreature($spawnID);
+					else
+						LogError("Smart TC {$tc_entry} {$sun_smart_entry->id}: NYI spawnType {$spawnType}");
+
+					if (!$shouldKeep)
+						continue;
+					break;
+				case SmartAction::SUMMON_CREATURE_GROUP:
+					$this->ImportSummonGroup($action_list_origin ? $action_list_origin : $tc_entry, $sun_smart_entry->action_param1);
 					break;
 				case SmartAction::SET_INST_DATA:
 				case SmartAction::SET_INST_DATA64:
@@ -1066,24 +1214,18 @@ class DBConverter
 				case SmartTarget::CREATURE_GUID:
 					//creature must exists in sun db
 					$spawnID = $sun_smart_entry->target_param1;
-					if(!array_key_exists($spawnID, $this->sunStore->creature)) {
-						$creatureID = $this->tcStore->creature[$spawnID]->id;
-						$sun_results = FindAll($this->sunStore->creature_template, "entry", $creatureID);
-						$name = $sun_results[0]->name;
-						echo "Smart TC {$tc_entry} ${source_type} trying to target a creature guid {$spawnID} (id: {$creatureID}) existing only on TC" . PHP_EOL;
-						echo "/!\ Importing ALL spawns for creature id {$creatureID} ({$name}). (to avoid this, import the creature before rerunning this script)" . PHP_EOL;
-						$this->CreateReplaceAllCreature($creatureID);
-					}
+					$shouldKeep = $this->CheckImportCreature($spawnID);
+					if (!$shouldKeep)
+						continue;
 					break;
 				case SmartTarget::GAMEOBJECT_GUID:
 					//gameobject must exists in sun db
 					$spawnID = $sun_smart_entry->target_param1;
-					if(!array_key_exists($spawnID, $this->sunStore->gameobject)) {
-						echo "{$tc_entry} ${source_type} trying to target non existing gameobject {$spawnID}" . PHP_EOL;
-						assert(false);
-						exit(1);
+					if(!array_key_exists($spawnID, $this->sunStore->gameobject)) 
+					{
+						LogError("{$tc_entry} ${source_type} trying to target non existing gameobject {$spawnID}");
+						continue;
 					}
-					break;
 				default:
 					break;
 			}
@@ -1093,22 +1235,36 @@ class DBConverter
 			if($sun_smart_entry->action_type == SmartAction::SET_DATA) {
 				switch($sun_smart_entry->target_type) {
 					case SmartTarget::CREATURE_RANGE:
+						if (!$sun_smart_entry->target_param1)
+						{	
+							//Means we can target any creatures, nothing to do here
+							continue;
+						}
 					case SmartTarget::CREATURE_DISTANCE:
 					case SmartTarget::CLOSEST_CREATURE:
 						$creature_id = $sun_smart_entry->target_param1;
-						$this->CheckImportCreature($tc_entry, $sun_smart_entry->id, $creature_id);
+						try {
+							$this->CheckImportCreatureTemplate($creature_id, $sun_smart_entry->patch_min, true);
+						} catch (ImportException $e) {
+							LogError("Smart TC {$tc_entry} {$sun_smart_entry->id}: failed to import smart for targeted creature: {$e->getMessage()}");
+							return;
+						}
 						break;
 					case SmartTarget::CREATURE_GUID:
 						$guid = $sun_smart_entry->target_param1;
 						$results = FindAll($this->sunStore->creature_entry, "spawnID", $guid);
-						if(empty($results)) {
-							echo "ERROR: Smart TC {$tc_entry} ${source_type}: Could not find sun creature with guid {$guid} for target CREATURE_GUID" . PHP_EOL;
-							assert(false);
-							exit(1);
-						}
+						if(empty($results)) 
+							throw new ImportException("Smart TC {$tc_entry} ${source_type}: Could not find sun creature with guid {$guid} for target CREATURE_GUID");
+
 						foreach($results as $creature_entry)
-							$this->CheckImportCreature($tc_entry, $sun_smart_entry->id, $creature_entry->entry);
-							
+						{
+							try {
+								$this->CheckImportCreatureTemplate($creature_entry->entry, $sun_smart_entry->patch_min, true);
+							} catch (ImportException $e) {
+								LogError("Smart TC {$tc_entry} {$sun_smart_entry->id}: failed to import smart for targeted creature: {$e->getMessage()}");
+								return;
+							}
+						}
 						break;
 					case SmartTarget::GAMEOBJECT_RANGE:
 					case SmartTarget::GAMEOBJECT_DISTANCE:
@@ -1118,11 +1274,9 @@ class DBConverter
 						break;
 					case SmartTarget::GAMEOBJECT_GUID:
 						$guid = $sun_smart_entry->target_param1;
-						if(!array_key_exists($guid, $this->sunStore->gameobject)) {
-							echo "ERROR: Smart TC {$tc_entry} ${source_type}: Could not find sun gameobject with guid {$guid} for target GAMEOBJECT_GUID" . PHP_EOL;
-							assert(false);
-							exit(1);
-						}
+						if(!array_key_exists($guid, $this->sunStore->gameobject))
+							throw new ImportException("Smart TC {$tc_entry} ${source_type}: Could not find sun gameobject with guid {$guid} for target GAMEOBJECT_GUID");
+
 						$this->CheckImportGameObject($tc_entry, $sun_smart_entry->id, $this->sunStore->gameobject[$guid]->id);
 						break;
 					default:
@@ -1234,15 +1388,12 @@ class DBConverter
 			return $action_id;
 		
 		$results = FindAll($this->tcStore->waypoint_scripts, "id", $action_id);
-		if(empty($results)) {
-			echo "ERROR: Tried to import waypoint_scripts with id {$action_id} but no such entry exists" . PHP_EOL;
-			assert(false);
-			exit(1);
-		}
+		if(empty($results))
+			throw new ImportException("ERROR: Tried to import waypoint_scripts with id {$action_id} but no such entry exists");
 		
 		$sunResults = FindAll($this->sunStore->waypoint_scripts, "id", $action_id);
 		if($this->SunHasSameWaypointsScripts($results, $sunResults)) {
-			fwrite($this->file, "-- Waypoint scripts with id {$action_id} are already present and the same" . PHP_EOL);
+			LogDebug("Waypoint scripts with id {$action_id} are already present and identical");
 			return $action_id;
 		}
 		
@@ -1262,17 +1413,12 @@ class DBConverter
 					//we already get the same broadcast_text tables, so nothing to change here!
 					break;
 				case 31: //SCRIPT_COMMAND_EQUIP
-					echo "ERROR: NYI SCRIPT_COMMAND_EQUIP (31)" . PHP_EOL;
-					assert(false);
-					exit(1);
-					break;
+					throw new ImportException("NYI SCRIPT_COMMAND_EQUIP (31)");
 				case 35: //SCRIPT_COMMAND_MOVEMENT
 					$movementType = $tc_waypoint_script->datalong;
 					if($movementType == 2) { // WAYPOINT_MOTION_TYPE
 						$path_id = $tc_waypoint_script->dataint;
-						echo "ERROR: NYI SCRIPT_COMMAND_MOVEMENT (35) with WAYPOINT_MOTION_TYPE" . PHP_EOL;
-						assert(false);
-						exit(1);
+						throw new ImportException("NYI SCRIPT_COMMAND_MOVEMENT (35) with WAYPOINT_MOTION_TYPE");
 					}
 					break;
 				default:
@@ -1341,20 +1487,20 @@ class DBConverter
 	function ImportWaypoints(int $guid, int $tc_path_id, bool $includeMovementTypeUpdate = true) : int
 	{
 		$results = FindAll($this->tcStore->waypoint_data, "id", $tc_path_id);
-		if(empty($results)) {
-			echo "ERROR: Tried to import waypoint_data with path_id {$tc_path_id} but no such path exists" . PHP_EOL;
-			assert(false);
-			exit(1);
+		if(empty($results))
+		{
+			$msg = "Tried to import waypoint_data with path_id {$tc_path_id} but no such path exists";
+			throw new ImportException($msg);
 		}
 		
 		if(CheckAlreadyImported($tc_path_id)) {
-			fwrite($this->file, "-- Path {$tc_path_id} is already imported" . PHP_EOL);
+			LogDebug("Path {$tc_path_id} is already imported");
 			return $tc_path_id;
 		}
 		
 		$sunResults = FindAll($this->sunStore->waypoint_data, "id", $tc_path_id);
 		if($this->SunHasSameWaypoints($results, $sunResults)) {
-			fwrite($this->file, "-- Path {$tc_path_id} is already present and the same" . PHP_EOL);
+			LogDebug("Path {$tc_path_id} is already present and the same");
 			return $tc_path_id;
 		}
 		
@@ -1430,7 +1576,7 @@ class DBConverter
 				fwrite($this->file, "DELETE FROM creature_formations WHERE memberGUID = {$guid};" . PHP_EOL);
 				unset($this->sunStore->creature_formations[$guid]);
 			} else {
-				fwrite($this->file, "-- Formation for creature {$guid} already in db" . PHP_EOL);
+				LogDebug("Formation for creature {$guid} already in db");
 				return;
 			}
 		}
@@ -1443,7 +1589,7 @@ class DBConverter
 				
 			if(!array_key_exists($tc_formation->memberGUID, $this->sunStore->creature)) {
 				//we don't have that leader yet
-				fwrite($this->file, "-- Trying to import formation for creature {$tc_formation->memberGUID}, but the creature isn't in our db yet. Importing it now" . PHP_EOL);
+				LogDebug("Trying to import formation for creature {$tc_formation->memberGUID}, but the creature isn't in our db yet. Importing it now");
 				$this->ImportTCCreature($tc_formation->memberGUID);
 				//this call won't import the formation because of the CheckAlreadyImported before
 			}
@@ -1493,7 +1639,7 @@ class DBConverter
 				return;
 			}
 			else { //we have that pool id and same pool, no need to import template
-				//fwrite($this->file, "-- Imported " . $creature ? "creature" : "gob" . " {$guid} is part of pool {$tc_pool_entry} which already exists" . PHP_EOL);
+				//LogDebug("Imported " . $creature ? "creature" : "gob" . " {$guid} is part of pool {$tc_pool_entry} which already exists");
 			}
 		}
 		else { 
@@ -1517,7 +1663,7 @@ class DBConverter
 
 	function FilterTLKAuras(string $auras) : string
 	{
-		TODO;
+		throw ImportException("NYI");
 	}
 	
 	function ImportCreatureTemplate($id)
@@ -1530,10 +1676,10 @@ class DBConverter
 			foreach($sun_results as $sun_result) {
 				$sun_name = $sun_result->name;
 				$tc_name = $sun_result->name;
-				if($sun_name != $tc_name) {
-					echo "ERROR: Sun db already has creature {$id} ({$tc_name})... but under a different name ({$sun_name}). Is this a custom creature?" . PHP_EOL;
-					assert(false);
-					exit(1);
+				if($sun_name != $tc_name)
+				{
+					$msg = "Sun db already has creature {$id} ({$tc_name})... but under a different name ({$sun_name}). Is this a custom creature?";
+					throw new ImportException($msg);
 				}
 			}
 			return;
@@ -1542,9 +1688,9 @@ class DBConverter
 		$sun_creature_template = new stdClass;
 		$sun_creature_template->entry = $tc_creature->id;
 		$sun_creature_template->name = $this->tcStore->creature_template[$tc_creature->id]->name;
-		echo "NYI";
-		assert(false);
-		exit(1);
+
+		LogError("NYI");
+		throw ImportException("NYI");
 		
 		array_push($this->sunStore->creature_template, $sun_creature_template);
 		fwrite($this->file, WriteObject($this->conn, "creature_template", $sun_creature_template));
@@ -1583,12 +1729,8 @@ class DBConverter
 		if(CheckAlreadyImported($guid))
 			return;
 		
-		if(array_key_exists($guid, $this->sunStore->creature)) {
+		if(array_key_exists($guid, $this->sunStore->creature)) 
 			return;
-			/*echo "ERROR: Trying to import creature with guid {$guid} but creature already exists" . PHP_EOL;
-			assert(false);
-			exit(1);*/
-		}
 		
 		$tc_creature = &$this->tcStore->creature[$guid];
 		$tc_creature_addon = null;
@@ -1610,7 +1752,7 @@ class DBConverter
 		$keep_model_id = true;
 		if($tc_creature->modelid) {
 			if($this->HasSunModelInTemplate($tc_creature->id, $tc_creature->modelid)) {
-				fwrite($this->file, "-- Has LK modelid {$tc_creature->modelid} already in creature template, set to 0." . PHP_EOL);
+				LogDebug("Has LK modelid {$tc_creature->modelid} already in creature template, set to 0.");
 				$keep_model_id = false;
 			}
 			
@@ -1619,14 +1761,11 @@ class DBConverter
 				if($model_info) {
 					if($model_info->patch > 4) {
 						//this is a LK model, what do to here? Just set model to 0 for now.
-						fwrite($this->file, "-- Has LK modelid {$tc_creature->modelid}, set to 0." . PHP_EOL);
+						LogDebug("Has LK modelid {$tc_creature->modelid}, set to 0.");
 						$keep_model_id = 0;
 					}
-				} else {
-					echo "ERROR: Non existing model id {$tc_creature->modelid}?" . PHP_EOL;
-					assert(false);
-					exit(1);
-				}
+				} else
+					throw new ImportException("Non existing model id {$tc_creature->modelid}?");
 			}
 		}
 		$sun_creature->modelid = $keep_model_id ? ($tc_creature->modelid ? $tc_creature->modelid : "NULL") : "NULL";
@@ -1704,22 +1843,17 @@ class DBConverter
 			return;
 			
 		$results = FindAll($this->tcStore->creature, "id", $creature_id);
-		if(empty($results)) {
-			echo "ERROR: Failed to find any TC creature with id {$creature_id}" . PHP_EOL;
-			assert(false);
-			exit(1);
-		}
+		if(empty($results))
+			throw new ImportException("Failed to find any TC creature with id {$creature_id}");
 						
 		$tc_guids = [];
 		foreach($results as $tc_creature) {
 			array_push($tc_guids, $tc_creature->guid);
 			if(!array_key_exists($tc_creature->guid, $this->sunStore->creature)) {
 				$sun_creature_entries = FindAll($this->sunStore->creature_entry, "spawnID", $tc_creature->guid);
-				if(!empty($sun_creature_entries)) {
-					echo "Error in sun DB... there is a creature_entry without matching creature for spawnID {$tc_creature->guid}" .PHP_EOL;
-					assert(false);
-					exit(1);
-				}
+				if(!empty($sun_creature_entries)) 
+					throw new ImportException("Error in sun DB... there is a creature_entry without matching creature for spawnID {$tc_creature->guid}");
+
 				$this->ImportTCCreature($tc_creature->guid, $patch_min, $patch_max);
 			}
 		}
@@ -1734,11 +1868,8 @@ class DBConverter
 			
 		//handle creatures
 		$results = FindAll($this->tcStore->creature, "map", $map_id);
-		if(empty($results)) {
-			echo "ERROR: Failed to find any TC creature in map {$map_id}" . PHP_EOL;
-			assert(false);
-			exit(1);
-		}
+		if(empty($results)) 
+			throw new ImportException("Failed to find any TC creature in map {$map_id}");
 		
 		$tc_guids = [];
 		foreach($results as $tc_creature) {
@@ -1751,12 +1882,9 @@ class DBConverter
 		
 		//handle gameobjects
 		$results = FindAll($this->tcStore->gameobject, "map", $map_id);
-		if(empty($results)) {
-			echo "ERROR: Failed to find any TC gameobject in map {$map_id}" . PHP_EOL;
-			assert(false);
-			exit(1);
-		}
-						
+		if(empty($results))
+			throw new ImportException("Failed to find any TC gameobject in map {$map_id}");
+
 		$tc_guids = [];
 		foreach($results as $tc_gob) {
 			array_push($tc_guids, $tc_gob->guid);
@@ -1772,7 +1900,7 @@ class DBConverter
 		if(!$this->delayedFormationsImports)
 			return;
 		
-		fwrite($this->file, "-- Formations" . PHP_EOL);
+		LogDebug("Formations");
 		fwrite($this->file, $this->delayedFormationsImports);
 		$this->delayedFormationsImports = "";
 	}
@@ -1817,12 +1945,8 @@ class DBConverter
 		if(CheckAlreadyImported($guid))
 			return;
 		
-		if(array_key_exists($guid, $this->sunStore->gameobject)) {
+		if(array_key_exists($guid, $this->sunStore->gameobject))
 			return;
-			/*echo "ERROR: Trying to import creature with guid {$guid} but creature already exists" . PHP_EOL;
-			assert(false);
-			exit(1);*/
-		}
 		
 		$tc_gameobject = &$this->tcStore->gameobject[$guid];
 		
@@ -1916,11 +2040,8 @@ class DBConverter
 			return;
 			
 		$results = FindAll($this->tcStore->gameobject, "id", $gob_id);
-		if(empty($results)) {
-			echo "ERROR: Failed to find any TC gameobject with id {$gob_id}" . PHP_EOL;
-			assert(false);
-			exit(1);
-		}
+		if(empty($results)) 
+			throw new ImportException("Failed to find any TC gameobject with id {$gob_id}");
 						
 		$tc_guids = [];
 		foreach($results as $tc_gob) {

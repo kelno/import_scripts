@@ -12,8 +12,7 @@ fwrite($file, "START TRANSACTION;" . PHP_EOL);
 
 $start = microtime(true);
 
-$debug = false;
-$converter = new DBConverter($file, $debug);
+$converter = new DBConverter($file);
 
 $conn = new PDO("mysql:host=localhost", $login, $password);
 $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -69,4 +68,4 @@ fclose($file);
 
 $duration = microtime(true) - $start;
 $duration = number_format($duration, 4);
-echo "Finished in {$duration}s" . PHP_EOL;	
+echo PHP_EOL . "Finished in {$duration}s with {$warnings} warnings and {$errors} errors" . PHP_EOL;	

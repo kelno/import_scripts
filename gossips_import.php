@@ -29,8 +29,7 @@ if (!$file)
 
 $start = microtime(true);
 	
-$debug = false;
-$converter = new DBConverter($file, $debug);
+$converter = new DBConverter($file);
 
 $conn = new PDO("mysql:host=localhost", $login, $password);
 $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -46,12 +45,18 @@ $stmt = $conn->query($query);
 $stmt->setFetchMode(PDO::FETCH_ASSOC);
 		
 echo "Importing... " . PHP_EOL;
+
 foreach($stmt->fetchAll() as $v) {
 	fwrite($file, "-- Importing creature gossip with entry {$v['entry']} ({$v['name']}) with import type {$v['import']}" . PHP_EOL);
 	switch($v["import"])
 	{
 		case "SMART": //SMART
+			try {
 			$converter->CreateSmartAI($v['entry'], SmartSourceType::creature);
+			} catch (ImportException $e) {
+				echo "ERROR : {$e->getMessage()}" . PHP_EOL;
+				fwrite($file, "-- FAILURE {$e->getMessage()}" . PHP_EOL);
+			}
 			break;
 		case "GOSSIP": 
 			$setflag = $v['npcflag'] & 1;
@@ -83,4 +88,4 @@ fclose($file);
 
 $duration = microtime(true) - $start;
 $duration = number_format($duration, 4);
-echo "Finished in {$duration}s" . PHP_EOL;	
+echo PHP_EOL . "Finished in {$duration}s with {$warnings} warnings and {$errors} errors" . PHP_EOL;	
