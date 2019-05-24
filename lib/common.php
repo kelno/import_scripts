@@ -12,8 +12,6 @@ set_error_handler(function($severity, $message, $file, $line) {
     }
 });
 
-
-
 include_once(__DIR__ . '/helpers.php');
 include_once(__DIR__ . '/smartai.php');
 include_once(__DIR__ . '/../config.php');
@@ -24,7 +22,16 @@ abstract class LoadMode
 	const trinitycore = 1;
 }
 
-class ImportException extends Exception { }
+class ImportException extends Exception 
+{ 
+	function __construct (string $message = "", bool $error = true) 
+	{
+		$this->_error = $error;
+		parent::__construct($message);
+	}
+	
+	public $_error;
+}
 
 $debug = false;
 $errors = 0;
@@ -36,6 +43,18 @@ function LogError($msg)
 	echo "ERROR: {$msg}" . PHP_EOL;
 	fwrite($file, "-- ERROR {$msg}" . PHP_EOL);
 	++$errors;
+}
+
+//expect ImportException
+function LogException($e, $msg = "")
+{
+	if ($msg == "")
+		$msg = $e->getMessage();
+	
+	if ($e->_error)
+		LogError($msg);
+	else
+		LogWarning($msg);
 }
 
 function LogWarning($msg)
@@ -627,11 +646,8 @@ class DBConverter
 		$this->timelol("CM1");
 		
 		$results = FindAll($this->tcStore->gossip_menu, "MenuID", $tc_menu_id);
-		if(empty($results)) {
-			echo "Failed to find TC menu {$tc_menu_id}" . PHP_EOL;
-			assert(false);
-			exit(1);
-		}
+		if(empty($results))
+			throw new ImportException("Failed to find TC menu {$tc_menu_id}");
 		
 		$this->timelol("CM2");
 		
@@ -841,7 +857,7 @@ class DBConverter
 			try {
 				$this->CheckImportCreatureTemplate($entry, $dummy, false);
 			} catch (ImportException $e) {
-				LogError("Summon group {$npcEntry} group {$groupID}: Failed to import smart for summoned creature: {$e->getMessage()}");
+				LogException($e, "Summon group {$npcEntry} group {$groupID}: Failed to import smart for summoned creature: {$e->getMessage()}");
 				continue;
 			}
 		}
@@ -904,12 +920,11 @@ class DBConverter
 		
 		$sun_results = FindAll($this->sunStore->creature_template, "entry", $creature_id);
 		if(empty($sun_results)) {
-			echo PHP_EOL;
-			LogError("Targeted creature {$creature_id} doesn't exists in our database");
+			LogWarning("Targeted creature entry {$creature_id} doesn't exists in our database. Setting this line to patch 5.");
 			$patch = 5;
 			return;
 		}
-		echo "Importing referenced summon/targets creature id {$creature_id}, "; //... continue this line later
+		echo "Importing referenced summon/target creature id {$creature_id}, "; //... continue this line later
 		foreach($sun_results as $sun_result) {
 			$sunAIName = $sun_result->AIName;
 			$sunScriptName = $sun_result->ScriptName;
@@ -920,25 +935,35 @@ class DBConverter
 				echo "it currently had AIName '{$sunAIName}' and ScriptName '{$sunScriptName}'." . PHP_EOL;
 		}
 		
-		$this->CreateSmartAI($creature_id, SmartSourceType::creature);
+		$this->CreateSmartAI($creature_id, SmartSourceType::creature, SmartSourceType::creature);
 		$this->timelol("CIC3");
 	}
 
-	function CheckImportGameObject(int $from_entry, int $from_id, int $gob_id)
+	function CheckImportGameObjectTemplate(int $gob_id, int& $patch, bool $hasToBeSmart)
 	{
+		if(CheckAlreadyImported($gob_id))
+			return;
+		
 		if(!array_key_exists($gob_id, $this->tcStore->gameobject_template))
-			throw new ImportException("Smart TC {$from_entry} has SET_DATA on a non existing gameobject {$gob_id}");
+			throw new ImportException("Smart reference a non existing gameobject {$gob_id}");
 		
 		if($this->tcStore->gameobject_template[$gob_id]->AIName != "SmartAI")
-			throw new ImportException("Smart TC {$from_entry}has SET_DATA on a non Smart gameobject {$gob_id}");
-		
-		echo "Smart TC {$from_entry} targets gameobject id {$gob_id}, also importing it. "; //... continue this line later
+			throw new ImportException("Smart reference a non Smart gameobject {$gob_id}");
 		
 		if(CheckIdentical($this->sunStore->smart_scripts, $this->tcStore->smart_scripts, "entryorguid", $gob_id)) {
 			//echo "Already identical, skipping" . PHP_EOL;
 			LogDebug("SmartAI for gob {$gob_id} is already in db and identical.");
 			return;
 		}
+		
+		$sun_results = FindAll($this->sunStore->gameobject_template, "entry", $gob_id);
+		if(empty($sun_results)) {
+			LogWarning("Targeted gob entry {$gob_id} doesn't exists in our database");
+			$patch = 5;
+			return;
+		}
+		
+		echo "Smart TC {$from_entry} targets gameobject id {$gob_id}, also importing it, "; //... continue this line later
 		
 		$sunAIName = $this->sunStore->gameobject_template[$creature_id]->AIName;
 		$sunScriptName = $this->sunStore->gameobject_template[$creature_id]->ScriptName;
@@ -948,7 +973,7 @@ class DBConverter
 		else 
 			echo "It currently had AIName '{$sunAIName}' and ScriptName '{$sunScriptName}." . PHP_EOL;
 
-		$this->CreateSmartAI($gob_id, SmartSourceType::gameobject);
+		$this->CreateSmartAI($gob_id, SmartSourceType::gameobject, SmartSourceType::gameobject);
 	}
 
 	function timelol($id, int $limit = 1)
@@ -969,30 +994,206 @@ class DBConverter
 		$start = microtime(true);
 	}
 
-	// true if we should keep the action using this
 	function CheckImportCreature(int $spawnID)
 	{
-		if(!array_key_exists($spawnID, $this->sunStore->creature)) {
-			if(!array_key_exists($spawnID, $this->tcStore->creature)) {
-				LogWarning("Smart TC {$tc_entry} ${source_type} trying to target a non existing creature guid {$spawnID} on their own db... this is a tc db error. Ignoring.");
-				return false;
-			}
-			$creatureID = $this->tcStore->creature[$spawnID]->id;
-			$sun_results = FindAll($this->sunStore->creature_template, "entry", $creatureID);
-			if (empty($sun_results))
-			{
-				LogWarning("Smart TC {$tc_entry} ${source_type} trying to target a creature guid {$spawnID} (id: {$creatureID}) existing only on TC AND with an entry not existing on TBC. Ignoring.");
-				return false;
-			}
-			$name = $sun_results[0]->name;
-			echo "Smart TC {$tc_entry} ${source_type} trying to target a creature guid {$spawnID} (id: {$creatureID}) existing only on TC" . PHP_EOL;
-			echo "/!\ Importing ALL spawns for creature id {$creatureID} ({$name}). (to avoid this, import the creature before rerunning this script)" . PHP_EOL;
-			$this->CreateReplaceAllCreature($creatureID);
-		}
-		return true;
+		if(!array_key_exists($spawnID, $this->tcStore->creature))
+			throw new ImportException("Smart TC trying to target a non existing creature guid {$spawnID} on their own db... this is a tc db error. Ignoring.", false);
+			
+		if(array_key_exists($spawnID, $this->sunStore->creature))
+			return; //already present
+		
+		$creatureID = $this->tcStore->creature[$spawnID]->id;
+		$sun_results = FindAll($this->sunStore->creature_template, "entry", $creatureID);
+		if (empty($sun_results))
+			throw new ImportException("Smart TC trying to target a creature spawnID {$spawnID} (id: {$creatureID}) existing only on TC AND with an entry not existing on TBC. Ignoring.", false);
+		
+		$name = $sun_results[0]->name;
+		echo "Smart TC {$tc_entry} ${source_type} trying to target a creature spawnID {$spawnID} (id: {$creatureID}) existing only on TC" . PHP_EOL;
+		echo "/!\ Importing ALL spawns for creature id {$creatureID} ({$name}). (to avoid this, import the creature before rerunning this script)" . PHP_EOL;
+		$this->CreateReplaceAllCreature($creatureID);
+	}
+	
+	function CheckImportGameObject(int $spawnID)
+	{
+		if(!array_key_exists($spawnID, $this->tcStore->gameobject))
+			throw new ImportException("Smart TC trying to target a non existing creature guid {$spawnID} on their own db... this is a tc db error. Ignoring.");
+
+		if(array_key_exists($spawnID, $this->sunStore->gameobject))
+			return; //already present
+		
+		//else import!
+		$goID = $this->tcStore->gameobject[$spawnID]->id;
+		$sun_results = FindAll($this->sunStore->gameobject_template, "entry", $goID);
+		if (empty($sun_results))
+			throw new ImportException("Smart TC trying to target a gameobject spawnID {$spawnID} (id: {$goID}) existing only on TC AND with an entry not existing on TBC. Ignoring.");
+		
+		$name = $sun_results[0]->name;
+		
+		throw new ImportException("NYI");
 	}
 
-	function CreateSmartAI(int $tc_entry, int $source_type, int $action_list_origin = 0)
+	// return creature id for this target (import if missing)
+	function GetTargetCreatureId($sun_smart_entry, int $creature_id, int& $patch) : int
+	{
+		switch($sun_smart_entry->target_type)
+		{
+			case SmartTarget::NONE:
+			case SmartTarget::SELF:
+				break;
+			case SmartTarget::CREATURE_DISTANCE:
+			case SmartTarget::CLOSEST_CREATURE:
+			case SmartTarget::CREATURE_RANGE:
+				if ($sun_smart_entry->target_param1)
+					$creature_id = $sun_smart_entry->target_param1;
+				else if ($sun_smart_entry->target_type != SmartTarget::CREATURE_RANGE)
+					throw new ImportException("Target {$sun_smart_entry->target_type} of smart {$sun_smart_entry->entryorguid} id {$sun_smart_entry->id} has no target entry. Wut?");
+				break;
+			case SmartTarget::CREATURE_GUID:
+				$spawnID = $sun_smart_entry->target_param1;
+				//$creature_id = $sun_smart_entry->target_param2;
+				$results = FindAll($this->tcStore->creature, "guid", $spawnID);
+				if(empty($results)) 
+					throw new ImportException("Could not find tc creature with guid {$spawnID} for target CREATURE_GUID");
+					
+				$creature_id = $results[0]->id;
+				try {
+					$this->CheckImportCreature($spawnID);
+				} catch (ImportException $e) {
+					throw new ImportException("importing creature spawnID {$spawnID} with error: {$e->getMessage()}", $e->_error);
+				}
+				break;
+			case SmartTarget::VICTIM:
+			case SmartTarget::CLOSEST_PLAYER:
+			case SmartTarget::PLAYER_DISTANCE:
+			case SmartTarget::PLAYER_RANGE:
+			case SmartTarget::HOSTILE_SECOND_AGGRO:
+			case SmartTarget::HOSTILE_LAST_AGGRO:
+			case SmartTarget::HOSTILE_RANDOM:
+			case SmartTarget::HOSTILE_RANDOM_NOT_TOP:
+			case SmartTarget::GAMEOBJECT_RANGE:
+			case SmartTarget::GAMEOBJECT_GUID:
+			case SmartTarget::GAMEOBJECT_DISTANCE:
+			case SmartTarget::INVOKER_PARTY:
+			case SmartTarget::CLOSEST_GAMEOBJECT:
+			case SmartTarget::ACTION_INVOKER_VEHICLE:
+			case SmartTarget::THREAT_LIST:
+			case SmartTarget::LOOT_RECIPIENTS:
+			case SmartTarget::FARTHEST:
+			case SmartTarget::VEHICLE_ACCESSORY:
+			case SmartTarget::CLOSEST_ENEMY:
+			case SmartTarget::CLOSEST_FRIENDLY:
+			case SmartTarget::POSITION:
+			case SmartTarget::ACTION_INVOKER:
+			case SmartTarget::STORED:
+			case SmartTarget::OWNER_OR_SUMMONER:
+				return 0;
+			default:
+				throw new ImportException("Target {$sun_smart_entry->target_type} NYI for Smart TC {$sun_smart_entry->entryorguid} {$sun_smart_entry->id}");
+		}
+
+		if ($creature_id)
+		{
+			try {
+				$this->CheckImportCreatureTemplate($creature_id, $patch, false);
+			} catch (ImportException $e) {
+				throw new ImportException("importing creature smart {$creature_id} with error: {$e->getMessage()}", $e->_error);
+			}
+		}
+
+		return $creature_id;
+	}
+
+	// return gob id for this target (import if missing)
+	function GetTargetGameObjectId($sun_smart_entry, int $gob_id, int& $patch) : int
+	{
+		switch($sun_smart_entry->target_type) {
+			case SmartTarget::NONE:
+			case SmartTarget::SELF:
+				break;
+			case SmartTarget::CREATURE_DISTANCE:
+			case SmartTarget::CLOSEST_CREATURE:
+			case SmartTarget::CREATURE_RANGE:
+			case SmartTarget::CREATURE_GUID:
+			case SmartTarget::VICTIM:
+			case SmartTarget::CLOSEST_PLAYER:
+			case SmartTarget::PLAYER_DISTANCE:
+			case SmartTarget::PLAYER_RANGE:
+			case SmartTarget::HOSTILE_SECOND_AGGRO:
+			case SmartTarget::HOSTILE_LAST_AGGRO:
+			case SmartTarget::HOSTILE_RANDOM:
+			case SmartTarget::HOSTILE_RANDOM_NOT_TOP:
+			case SmartTarget::INVOKER_PARTY:
+			case SmartTarget::ACTION_INVOKER_VEHICLE:
+			case SmartTarget::THREAT_LIST:
+			case SmartTarget::LOOT_RECIPIENTS:
+			case SmartTarget::FARTHEST:
+			case SmartTarget::VEHICLE_ACCESSORY:
+			case SmartTarget::CLOSEST_ENEMY:
+			case SmartTarget::CLOSEST_FRIENDLY:
+			case SmartTarget::POSITION:
+			case SmartTarget::ACTION_INVOKER:
+			case SmartTarget::STORED:
+			case SmartTarget::OWNER_OR_SUMMONER:
+			case SmartTarget::CREATURE_GUID:
+				return 0;
+			case SmartTarget::GAMEOBJECT_RANGE:
+			case SmartTarget::GAMEOBJECT_DISTANCE:
+			case SmartTarget::CLOSEST_GAMEOBJECT:
+				$gob_id = $sun_smart_entry->target_param1;
+				break;
+			case SmartTarget::GAMEOBJECT_GUID:
+				$spawnID = $sun_smart_entry->target_param1;
+				if(!array_key_exists($spawnID, $this->tcStore->gameobject))
+					throw new ImportException("SCould not find TC gameobject with spawnID {$spawnID} for target GAMEOBJECT_GUID. This is a TC error.");
+
+				$gob_id = $this->tcStore->gameobject[$guid].id;
+				try {
+					$this->CheckImportGameObject($spawnID);
+				} catch (ImportException $e) {
+					throw new ImportException("importing gameobject spawnID {$spawnID} with error: {$e->getMessage()}", $e->_error);
+				}
+				break;
+			default:
+				throw new ImportException("Target {$sun_smart_entry->target_type} NYI for Smart TC {$sun_smart_entry->entryorguid} {$sun_smart_entry->id}");
+		}
+		
+		if ($gob_id)
+		{
+			try {
+				$this->CheckImportGameObjectTemplate($gob_id, $patch, false);
+			} catch (ImportException $e) {
+				throw new ImportException("importing gob smart {$gob_id} with error: {$e->getMessage()}", $e->_error);
+			}
+		}
+
+		return $gob_id;
+	}
+	
+	// return creature/gob id for this target (import if missing)
+	function GetTargetId($sun_smart_entry, int $original_type, int $original_entry, int& $patch)
+	{
+		switch($original_type)
+		{
+			case SmartSourceType::creature:
+				return $this->GetTargetCreatureId($sun_smart_entry, $original_entry, $patch);
+				break;
+			case SmartSourceType::gameobject:
+				return $this->GetTargetGameObjectId($sun_smart_entry, $original_entry, $patch);
+				break;
+			default:
+				throw new ImportException("GetTargetId: NYI type {$original_type}");
+		}
+	}
+
+	function ImportSmartActionList(int $source_type, int $action_list_entry, int $original_type, int $original_entry, $sun_smart_entry, int& $patch)
+	{
+
+		$original_entry = $this->GetTargetId($sun_smart_entry, $original_type, $original_entry, $patch);
+		$this->CreateSmartAI($action_list_entry, SmartSourceType::timedactionlist, $original_type, $original_entry); 	
+	}
+	
+	// original_entry: if we're in an action list, the creature/gob it was called from
+	function CreateSmartAI(int $tc_entry, int $source_type, int $original_type, int $original_entry = 0)
 	{
 		if(CheckAlreadyImported($tc_entry + $source_type << 28)) { //max entry is 30.501.000 (smaller number with 28 bits shift is 268.435.456)
 			LogDebug("SmartAI {$tc_entry} {$source_type} is already imported");
@@ -1005,14 +1206,18 @@ class DBConverter
 		switch($source_type)
 		{
 			case SmartSourceType::creature:
-				if(!$action_list_origin)
-					$action_list_origin = $tc_entry;
+				if(!$original_entry)
+					$original_entry = $tc_entry;
 				$sql .= "UPDATE creature_template SET ScriptName = '', AIName = 'SmartAI' WHERE entry = {$tc_entry};" . PHP_EOL;
 				break;
 			case SmartSourceType::gameobject:
+				if(!$original_entry)
+					$original_entry = $tc_entry;
 				$sql .= "UPDATE gameobject_template SET ScriptName = '', AIName = 'SmartAI' WHERE entry = {$tc_entry};" . PHP_EOL;
 				break;
 			case SmartSourceType::areatrigger:
+				if(!$original_entry)
+					$original_entry = $tc_entry;
 				$sql .= "UPDATE areatrigger_scripts SET ScriptName = 'SmartTrigger' WHERE entry = {$tc_entry};" . PHP_EOL;
 				break;
 			case SmartSourceType::timedactionlist:
@@ -1051,14 +1256,19 @@ class DBConverter
 						try {
 							$this->CreateSmartWaypoints($path_id);
 						} catch (ImportException $e) {
-							LogError("Failed to create waypoints for entry {$action_list_origin} {$tc_entry} and id {$sun_smart_entry->id}: {$e->getMessage()}");
+							LogException($e, "Failed to create waypoints for entry {$original_entry} {$tc_entry} id {$sun_smart_entry->id}: {$e->getMessage()}");
 							continue;
 						}
 					}
 					break;
 				case SmartEvent::GOSSIP_SELECT:
 					if($tc_menu_id = $smart_entry->event_param1) {
-						$sun_menu_id = $this->CreateMenu($tc_menu_id);
+						try {
+							$sun_menu_id = $this->CreateMenu($tc_menu_id);
+						} catch (ImportException $e) {
+							LogException($e, "Failed to create menu for entry {$original_entry} {$tc_entry} id {$sun_smart_entry->id}: {$e->getMessage()}");
+							continue;
+						}
 						$sun_smart_entry->event_param1 = $sun_menu_id;
 					}
 					break;
@@ -1073,54 +1283,41 @@ class DBConverter
 			{
 				case SmartAction::TALK:
 				case SmartAction::SIMPLE_TALK:
-					$import_id = $action_list_origin ? $action_list_origin : $tc_entry;
+					assert($source_type == SmartSourceType::creature || $source_type == SmartSourceType::timedactionlist);
+					
+					$creature_id = $original_entry ? $original_entry : $tc_entry;
 					$useTalkTarget = $sun_smart_entry->action_type == SmartAction::TALK && $sun_smart_entry->action_param3;
 					if (!$useTalkTarget) //the arguments makes it so we talk with specified target (does not make target talk)
 					{
 						switch($sun_smart_entry->target_type)
 						{
-							case SmartTarget::NONE:
-							case SmartTarget::SELF:
-								break;
-							case SmartTarget::CREATURE_DISTANCE:
-							case SmartTarget::CLOSEST_CREATURE:
-							case SmartTarget::CREATURE_RANGE:
-								$import_id = $sun_smart_entry->target_param1;
-								if (!$import_id)
-									throw new ImportException("Talk target {$sun_smart_entry->target_type} NYI for entry {$action_list_origin} {$tc_entry} and id {$sun_smart_entry->id}. Wut?");
-								break;
-							case SmartTarget::CREATURE_GUID:
-								//we handle it only if entry is specified, guid nyi
-								$import_id = $sun_smart_entry->target_param2;
-								if (!$import_id)
-									throw new ImportException("Talk target {$sun_smart_entry->target_type} NYI for entry {$action_list_origin} {$tc_entry} and id {$sun_smart_entry->id}. Need to implement guid handling");
-								break;
-							case SmartTarget::CLOSEST_PLAYER:
-							case SmartTarget::PLAYER_DISTANCE:
-							case SmartTarget::PLAYER_RANGE:
-								//in this case, WE talk
-								break;
-							case SmartTarget::ACTION_INVOKER:
-							case SmartTarget::STORED:
-								LogWarning("Talk target {$sun_smart_entry->target_type} for entry {$action_list_origin} {$tc_entry} and id {$sun_smart_entry->id} cannot be automatically imported. Referenced creature might not have text.");
-								$import_id = 0; //don't import any text
-								break; //but still import this smart line in this case
-							case SmartTarget::CLOSEST_ENEMY:
-							case SmartTarget::CLOSEST_FRIENDLY:
-								//doesnt make any sense to use here... this is very probably a TC error
-								LogWarning("Entry {$action_list_origin} {$tc_entry} id {$sun_smart_entry->id} uses target CLOSEST_ENEMY/CLOSEST_FRIENDLY without useTalkTarget... Makes no sense, let's enable useTalkTarget instead.");
-								//import normally
-								break;
-							default:
-								throw new ImportException("Talk target {$sun_smart_entry->target_type} NYI for entry {$action_list_origin} {$tc_entry} and id {$sun_smart_entry->id}");
+						case SmartTarget::CLOSEST_PLAYER:
+						case SmartTarget::PLAYER_DISTANCE:
+						case SmartTarget::PLAYER_RANGE:
+							break; //in this case, WE talk
+						case SmartTarget::CLOSEST_ENEMY:
+						case SmartTarget::CLOSEST_FRIENDLY:
+						case SmartTarget::POSITION:
+							//doesnt make any sense to use here... this is very probably a TC error
+							LogWarning("Entry {$original_entry} {$tc_entry} id {$sun_smart_entry->id} uses target {$sun_smart_entry->target_type} without useTalkTarget... Makes no sense, let's enable useTalkTarget instead.");
+							break; //then import normally like in the useTalkTarget case
+						default:
+							try  {
+								$creature_id = $this->GetTargetCreatureId($sun_smart_entry, $creature_id, $sun_smart_entry->patch_min);
+							} catch (ImportException $e) {
+								LogException($e, "Failed to import target {$sun_smart_entry->target_type} for entry {$original_entry} {$tc_entry} id {$sun_smart_entry->id}: {$e->getMessage()}");
+								continue;
+							}
+							break;
 						}
 					}
-					if ($import_id)
+					
+					if ($creature_id) //0 means we can't know easily which target it is (so we import the action with a warning)
 					{
 						try {
-							$this->CreateCreatureText($import_id);
+							$this->CreateCreatureText($creature_id);
 						} catch (ImportException $e) {
-							LogError("Failed to import text talk with target {$sun_smart_entry->target_type} for entry {$action_list_origin} {$tc_entry} and id {$sun_smart_entry->id}: {$e->getMessage()}");
+							LogException($e, "Failed to import text talk with target {$sun_smart_entry->target_type} for entry {$original_entry} {$tc_entry} id {$sun_smart_entry->id}: {$e->getMessage()}");
 							continue;
 						}
 					}
@@ -1133,25 +1330,48 @@ class DBConverter
 					}
 					break;
 				case SmartAction::CALL_TIMED_ACTIONLIST:
-					$this->CreateSmartAI($sun_smart_entry->action_param1, SmartSourceType::timedactionlist, $action_list_origin);
+					try {
+						$this->ImportSmartActionList($source_type, $sun_smart_entry->action_param1, $original_type, $original_entry, $sun_smart_entry, $sun_smart_entry->patch_min);
+					} catch (ImportException $e) {
+						LogException($e, "Failed to import actionlist for entry {$original_entry} {$tc_entry} id {$sun_smart_entry->id}: {$e->getMessage()}");
+						continue;
+					}
 					break;
 				case SmartAction::CALL_RANDOM_TIMED_ACTIONLIST:			
+					assert($source_type == SmartSourceType::creature || $source_type == SmartSourceType::timedactionlist); //we only handle creature action list atm
 					$SMART_AI_MAX_ACTION_PARAM = 6;
 					for($i = 1; $i <= $SMART_AI_MAX_ACTION_PARAM; $i++) {
 						$fieldName = "action_param" . $i;
-						if($action_list = $sun_smart_entry->$fieldName)
-							$this->CreateSmartAI($action_list, SmartSourceType::timedactionlist, $action_list_origin);
+						if($action_list = $sun_smart_entry->$fieldName) {
+							try {
+								$this->ImportSmartActionList($source_type, $action_list , $original_type, $original_entry, $sun_smart_entry, $sun_smart_entry->patch_min);
+							} catch (ImportException $e) {
+								LogException($e, "Failed to import actionlist for entry {$original_entry} {$tc_entry} id {$sun_smart_entry->id}: {$e->getMessage()}");
+								continue;
+							}
+						}
 					}
 					break;
 				case SmartAction::CALL_RANDOM_RANGE_TIMED_ACTIONLIST:
+					assert($source_type == SmartSourceType::creature || $source_type == SmartSourceType::timedactionlist); //we only handle creature action list atm
 					$min = $sun_smart_entry->action_param1;
 					$max = $sun_smart_entry->action_param2;
 					for($i = $min; $i <= $max; $i++) {
-						$this->CreateSmartAI($i, SmartSourceType::timedactionlist, $action_list_origin);
+						try {
+							$this->ImportSmartActionList($source_type, $i, $original_type, $original_entry, $sun_smart_entry, $sun_smart_entry->patch_min);
+						} catch (ImportException $e) {
+							LogException($e, "Failed to import actionlist for entry {$original_entry} {$tc_entry} id {$sun_smart_entry->id}: {$e->getMessage()}");
+							continue;
+						}
 					}
 					break;
 				case SmartAction::SEND_GOSSIP_MENU:
-					$sun_menu_id = $this->CreateMenu($sun_smart_entry->action_param1); 
+					try {
+						$sun_menu_id = $this->CreateMenu($sun_smart_entry->action_param1); 
+					} catch (ImportException $e) {
+						LogException($e, "Failed to create menu for entry {$original_entry} {$tc_entry} id {$sun_smart_entry->id}: {$e->getMessage()}");
+						continue;
+					}
 					$sun_smart_entry->action_param1 = $sun_menu_id;
 					break;
 				case SmartAction::WP_START:
@@ -1159,7 +1379,7 @@ class DBConverter
 					try {
 						$this->CreateSmartWaypoints($path_id);
 					} catch (ImportException $e) {
-						LogError("Failed to create waypoints for entry {$action_list_origin} {$tc_entry} and id {$sun_smart_entry->id}: {$e->getMessage()}");
+						LogException($e, "Failed to create waypoints for entry {$original_entry} {$tc_entry} and id {$sun_smart_entry->id}: {$e->getMessage()}");
 						continue;
 					}
 					break;
@@ -1169,7 +1389,7 @@ class DBConverter
 					try {
 						$this->CheckImportCreatureTemplate($summonID, $sun_smart_entry->patch_min, false);
 					} catch (ImportException $e) {
-						LogError("Smart TC {$tc_entry} {$sun_smart_entry->id}: Failed to import smart for summoned creature: {$e->getMessage()}");
+						LogException($e, "Smart TC {$tc_entry} {$sun_smart_entry->id}: Failed to import smart for summoned creature: {$e->getMessage()}");
 						continue;
 					}
 					break;
@@ -1184,16 +1404,23 @@ class DBConverter
 					$shouldKeep = false;
 					$spawnType = $sun_smart_entry->action_param1;
 					$spawnID = $sun_smart_entry->action_param2;
-					if ($spawnType = 0) //0 == creature
-						$shouldKeep = $this->CheckImportCreature($spawnID);
-					else
-						LogError("Smart TC {$tc_entry} {$sun_smart_entry->id}: NYI spawnType {$spawnType}");
-
-					if (!$shouldKeep)
+					try {
+						if ($spawnType == MapSpawnType::creature) 
+							$this->CheckImportCreature($spawnID);
+						else if ($spawnType == MapSpawnType::gameobject)
+							$this->CheckImportGameObject($spawnID);
+						else
+						{
+							LogError("Smart TC {$tc_entry} {$sun_smart_entry->id}: NYI spawnType {$spawnType}");
+							continue;
+						}
+					} catch (ImportException $e) {
+						LogException($e, "Smart TC {$tc_entry} {$sun_smart_entry->id}: Failed to import smart for summoned creature: {$e->getMessage()}");
 						continue;
+					}
 					break;
 				case SmartAction::SUMMON_CREATURE_GROUP:
-					$this->ImportSummonGroup($action_list_origin ? $action_list_origin : $tc_entry, $sun_smart_entry->action_param1);
+					$this->ImportSummonGroup($original_entry ? $original_entry : $tc_entry, $sun_smart_entry->action_param1);
 					break;
 				case SmartAction::SET_INST_DATA:
 				case SmartAction::SET_INST_DATA64:
@@ -1209,78 +1436,42 @@ class DBConverter
 			//echo "action type " . $sun_smart_entry->action_type . PHP_EOL;
 			$this->timelol("5");
 			
-			switch($sun_smart_entry->target_type)
+			if (!IsActionIgnoreTarget($sun_smart_entry->action_type))
 			{
-				case SmartTarget::CREATURE_GUID:
-					//creature must exists in sun db
-					$spawnID = $sun_smart_entry->target_param1;
-					$shouldKeep = $this->CheckImportCreature($spawnID);
-					if (!$shouldKeep)
-						continue;
-					break;
-				case SmartTarget::GAMEOBJECT_GUID:
-					//gameobject must exists in sun db
-					$spawnID = $sun_smart_entry->target_param1;
-					if(!array_key_exists($spawnID, $this->sunStore->gameobject)) 
-					{
-						LogError("{$tc_entry} ${source_type} trying to target non existing gameobject {$spawnID}");
-						continue;
-					}
-				default:
-					break;
+				switch($sun_smart_entry->target_type)
+				{
+					case SmartTarget::CREATURE_GUID:
+						//creature must exists in sun db
+						$spawnID = $sun_smart_entry->target_param1;
+						try {
+							$this->CheckImportCreature($spawnID);
+						} catch (ImportException $e) {
+							LogWarning("Smart TC {$tc_entry} {$sun_smart_entry->id}: Failed to import smart for targeted creature spawnID {$spawnID}: {$e->getMessage()}");
+							continue;
+						}
+						break;
+					case SmartTarget::GAMEOBJECT_GUID:
+						//gameobject must exists in sun db
+						$spawnID = $sun_smart_entry->target_param1;
+						try {
+							$this->CheckImportGameObject($spawnID);
+						} catch (ImportException $e) {
+							LogWarning("Smart TC {$tc_entry} {$sun_smart_entry->id}: Failed to import smart for targeted gameobject spawnID {$spawnID}: {$e->getMessage()}");
+							continue;
+						}
+					default:
+						break;
+				}
 			}
 			
 			$this->timelol("6");
 			 
 			if($sun_smart_entry->action_type == SmartAction::SET_DATA) {
-				switch($sun_smart_entry->target_type) {
-					case SmartTarget::CREATURE_RANGE:
-						if (!$sun_smart_entry->target_param1)
-						{	
-							//Means we can target any creatures, nothing to do here
-							continue;
-						}
-					case SmartTarget::CREATURE_DISTANCE:
-					case SmartTarget::CLOSEST_CREATURE:
-						$creature_id = $sun_smart_entry->target_param1;
-						try {
-							$this->CheckImportCreatureTemplate($creature_id, $sun_smart_entry->patch_min, true);
-						} catch (ImportException $e) {
-							LogError("Smart TC {$tc_entry} {$sun_smart_entry->id}: failed to import smart for targeted creature: {$e->getMessage()}");
-							return;
-						}
-						break;
-					case SmartTarget::CREATURE_GUID:
-						$guid = $sun_smart_entry->target_param1;
-						$results = FindAll($this->sunStore->creature_entry, "spawnID", $guid);
-						if(empty($results)) 
-							throw new ImportException("Smart TC {$tc_entry} ${source_type}: Could not find sun creature with guid {$guid} for target CREATURE_GUID");
-
-						foreach($results as $creature_entry)
-						{
-							try {
-								$this->CheckImportCreatureTemplate($creature_entry->entry, $sun_smart_entry->patch_min, true);
-							} catch (ImportException $e) {
-								LogError("Smart TC {$tc_entry} {$sun_smart_entry->id}: failed to import smart for targeted creature: {$e->getMessage()}");
-								return;
-							}
-						}
-						break;
-					case SmartTarget::GAMEOBJECT_RANGE:
-					case SmartTarget::GAMEOBJECT_DISTANCE:
-					case SmartTarget::CLOSEST_GAMEOBJECT:
-						$gob_id = $sun_smart_entry->target_param1;
-						$this->CheckImportGameObject($tc_entry, $sun_smart_entry->id, $gob_id);
-						break;
-					case SmartTarget::GAMEOBJECT_GUID:
-						$guid = $sun_smart_entry->target_param1;
-						if(!array_key_exists($guid, $this->sunStore->gameobject))
-							throw new ImportException("Smart TC {$tc_entry} ${source_type}: Could not find sun gameobject with guid {$guid} for target GAMEOBJECT_GUID");
-
-						$this->CheckImportGameObject($tc_entry, $sun_smart_entry->id, $this->sunStore->gameobject[$guid]->id);
-						break;
-					default:
-						break;
+				try {
+					$this->GetTargetId($sun_smart_entry, $original_type, $original_entry, $sun_smart_entry->patch_min);  //will import creature/gob if missing
+				} catch (ImportException $e) {
+					LogException($e, "Smart TC {$tc_entry} {$sun_smart_entry->id}: Failed to import smart for targeted creature/gob spawnID: {$e->getMessage()}");
+					continue;
 				}
 			}
 			

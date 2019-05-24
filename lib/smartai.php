@@ -8,6 +8,12 @@ abstract class SmartSourceType
 	const timedactionlist = 9;
 }
 
+abstract class MapSpawnType
+{
+	const creature = 0;
+	const gameobject = 1;
+}
+
 abstract class SmartEvent
 {
 	const UPDATE_IC                   = 0;    
@@ -264,3 +270,50 @@ abstract class SmartTarget
 	const VEHICLE_ACCESSORY              = 29;
 }
 	
+	
+function IsActionIgnoreTarget(int $action_type)
+{
+	switch($action_type)
+	{
+		case SmartAction::WP_PAUSE:
+		case SmartAction::INSTALL_AI_TEMPLATE:
+		case SmartAction::THREAT_ALL_PCT:
+		case SmartAction::AUTO_ATTACK:
+		case SmartAction::EVADE:
+		case SmartAction::FLEE_FOR_ASSIST:
+		case SmartAction::COMBAT_STOP:
+		case SmartAction::RANDOM_PHASE:
+		case SmartAction::RANDOM_PHASE_RANGE:
+		case SmartAction::SET_INST_DATA:
+		case SmartAction::SET_INST_DATA64:
+		case SmartAction::DIE:
+		case SmartAction::SET_IN_COMBAT_WITH_ZONE:
+		case SmartAction::CALL_FOR_HELP:
+		case SmartAction::SET_SHEATH:
+		case SmartAction::MOVE_FORWARD:
+		case SmartAction::SPAWN_SPAWNGROUP:
+		case SmartAction::DESPAWN_SPAWNGROUP:
+		case SmartAction::DISABLE_EVADE:
+		case SmartAction::TRIGGER_RANDOM_TIMED_EVENT:
+		case SmartAction::STORE_TARGET_LIST:
+		case SmartAction::SET_DISABLE_GRAVITY:
+		case SmartAction::SET_CAN_FLY:
+		case SmartAction::SET_RUN:
+		case SmartAction::SET_SWIM:
+		case SmartAction::WP_PAUSE:
+		case SmartAction::WP_STOP:
+		case SmartAction::WP_RESUME:
+		case SmartAction::SET_ORIENTATION:
+		case SmartAction::CREATE_TIMED_EVENT:
+		case SmartAction::TRIGGER_TIMED_EVENT:
+		case SmartAction::RESET_SCRIPT_BASE_OBJECT:
+		case SmartAction::CALL_SCRIPT_RESET:
+		case SmartAction::GAME_EVENT_STOP:
+		case SmartAction::GAME_EVENT_START:
+		case SmartAction::RESPAWN_BY_SPAWNID:
+			return true;
+		default:
+			return false;
+	}
+}
+

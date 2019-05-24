@@ -52,7 +52,7 @@ foreach($stmt->fetchAll() as $v) {
 	{
 		case "SMART": //SMART
 			try {
-			$converter->CreateSmartAI($v['entry'], SmartSourceType::creature);
+			$converter->CreateSmartAI($v['entry'], SmartSourceType::creature, SmartSourceType::creature);
 			} catch (ImportException $e) {
 				echo "ERROR : {$e->getMessage()}" . PHP_EOL;
 				fwrite($file, "-- FAILURE {$e->getMessage()}" . PHP_EOL);
