@@ -1,5 +1,12 @@
 <?php
 
+/*TODO:
+- creature_text not always imported?
+- make smart_scripts ported for tlk be patch 5
+- check spell existence on tbc (else, patch 5 as well)
+- conditions on menu options don't check patch 5 either
+*/
+
 //declare(strict_types = 1);
 ini_set('display_errors', '1');
 ini_set('display_startup_errors', '1');
@@ -110,6 +117,7 @@ class DBStore
 	public $spell_template = []; //key is spell id
 	public $trainer = []; //key is ID
 	public $trainer_spell = []; //key has NO MEANING
+	public $waypoint_info = []; //key is ID
 	public $waypoint_data = []; //key has NO MEANING
 	public $waypoint_scripts = []; //key has NO MEANING
 	public $waypoints = []; //key has NO MEANING
@@ -223,6 +231,11 @@ class DBStore
 			$stmt->setFetchMode(PDO::FETCH_OBJ);
 			foreach($stmt->fetchAll() as $v)
 				$this->spell_template[$v->entry] = $v->spellName1;
+				
+			$stmt = $conn->query("SELECT * FROM {$databaseName}.waypoint_info");
+			$stmt->setFetchMode(PDO::FETCH_OBJ);
+			foreach($stmt->fetchAll() as $v)
+				$this->waypoint_info[$v->id] = $v;
 		}
 		
 		$stmt = $conn->query("SELECT * FROM {$databaseName}.gameobject");
@@ -273,6 +286,7 @@ class DBStore
 		foreach($stmt->fetchAll() as $v)
 			$this->pool_template[$v->entry] = $v;
 		
+		
 		echo "\tDone" . PHP_EOL;
 	}
 }
@@ -284,6 +298,11 @@ class DBConverter
 	
 	public $tcStore;
 	public $sunStore;
+	
+	//Import referenced smartai even if it already has a scriptname
+	private $smartImportContagious = false;
+	//always import those regardless of smartImportContagious
+	private $forceImport = array("npc_obsidia", "npc_kalaran_windblade", "mobs_spitelashes");
 	
 	function __construct(&$file)
 	{
@@ -855,7 +874,7 @@ class DBConverter
 			$entry = $tc_group->entry;
 			$dummy = 0;
 			try {
-				$this->CheckImportCreatureTemplate($entry, $dummy, false);
+				$this->CheckImportCreatureSmart($entry, $dummy, false);
 			} catch (ImportException $e) {
 				LogException($e, "Summon group {$npcEntry} group {$groupID}: Failed to import smart for summoned creature: {$e->getMessage()}");
 				continue;
@@ -889,8 +908,28 @@ class DBConverter
 			fwrite($this->file, WriteObject($this->conn, "waypoints", $tc_waypoint)); 
 		}
 	}
+	
+	//import a dummy creature_template to make the FK happy
+	function ImportTLKCreatureTemplate(int $creature_id)
+	{
+		$tc_results = FindAll($this->tcStore->creature_template, "entry", $creature_id);
+		if (empty($tc_results))
+			throw new ImportException("Trying to import non existing TLK creature template {$creature_id}");
+			
+		$sun_results = FindAll($this->sunStore->creature_template, "entry", $creature_id);
+		if (!empty($sun_results))
+			throw new ImportException("Trying to import already existing creature template {$creature_id}");
+			
+		$creature_template = new stdClass;
+		$creature_template->entry = $creature_id;
+		$creature_template->name = $tc_results[0]->name;
+		$creature_template->patch = 5;
+		
+		array_push($this->sunStore->creature_template, $creature_template);
+		fwrite($this->file, WriteObject($this->conn, "creature_template", $creature_template)); 
+	}
 
-	function CheckImportCreatureTemplate(int $creature_id, int& $patch, bool $hasToBeSmart) 
+	function CheckImportCreatureSmart(int $creature_id, int& $patch, bool $hasToBeSmart) 
 	{
 		if(CheckAlreadyImported($creature_id))
 			return;
@@ -920,9 +959,9 @@ class DBConverter
 		
 		$sun_results = FindAll($this->sunStore->creature_template, "entry", $creature_id);
 		if(empty($sun_results)) {
-			LogWarning("Targeted creature entry {$creature_id} doesn't exists in our database. Setting this line to patch 5.");
+			LogWarning("Targeted creature entry {$creature_id} doesn't exists in our database, importing a dummy creature_template for it and setting this smart line to patch 5.");
 			$patch = 5;
-			return;
+			$this->ImportTLKCreatureTemplate($creature_id);
 		}
 		echo "Importing referenced summon/target creature id {$creature_id}, "; //... continue this line later
 		foreach($sun_results as $sun_result) {
@@ -931,15 +970,21 @@ class DBConverter
 			
 			if($sunAIName == "" && $sunScriptName == "")
 				echo "it currently has no script." . PHP_EOL;
-			else 
-				echo "it currently had AIName '{$sunAIName}' and ScriptName '{$sunScriptName}'." . PHP_EOL;
+			else {
+				if ($this->smartImportContagious || in_array($sunScriptName, $this->forceImport))
+					echo "it currently had AIName '{$sunAIName}' and ScriptName '{$sunScriptName}'." . PHP_EOL;
+				else {
+					echo PHP_EOL;
+					throw new ImportException("This would replace a creature which already has a script ({$sunAIName}/{$sunScriptName}), no import.", false);
+				}
+			}
 		}
 		
 		$this->CreateSmartAI($creature_id, SmartSourceType::creature, SmartSourceType::creature);
 		$this->timelol("CIC3");
 	}
 
-	function CheckImportGameObjectTemplate(int $gob_id, int& $patch, bool $hasToBeSmart)
+	function CheckImportGameObjectSmart(int $gob_id, int& $patch, bool $hasToBeSmart)
 	{
 		if(CheckAlreadyImported($gob_id))
 			return;
@@ -997,7 +1042,7 @@ class DBConverter
 	function CheckImportCreature(int $spawnID)
 	{
 		if(!array_key_exists($spawnID, $this->tcStore->creature))
-			throw new ImportException("Smart TC trying to target a non existing creature guid {$spawnID} on their own db... this is a tc db error. Ignoring.", false);
+			throw new ImportException("Smart TC trying to target a non existing creature guid {$spawnID}... this is a tc db error. Ignoring.", false);
 			
 		if(array_key_exists($spawnID, $this->sunStore->creature))
 			return; //already present
@@ -1008,8 +1053,8 @@ class DBConverter
 			throw new ImportException("Smart TC trying to target a creature spawnID {$spawnID} (id: {$creatureID}) existing only on TC AND with an entry not existing on TBC. Ignoring.", false);
 		
 		$name = $sun_results[0]->name;
-		echo "Smart TC {$tc_entry} ${source_type} trying to target a creature spawnID {$spawnID} (id: {$creatureID}) existing only on TC" . PHP_EOL;
-		echo "/!\ Importing ALL spawns for creature id {$creatureID} ({$name}). (to avoid this, import the creature before rerunning this script)" . PHP_EOL;
+		LogWarning("Smart TC trying to target a creature spawnID {$spawnID} (id: {$creatureID}) existing only on TC");
+		LogWarning("/!\ Importing ALL spawns for creature id {$creatureID} ({$name}). (to avoid this, import the creature before rerunning this script)");
 		$this->CreateReplaceAllCreature($creatureID);
 	}
 	
@@ -1094,7 +1139,7 @@ class DBConverter
 		if ($creature_id)
 		{
 			try {
-				$this->CheckImportCreatureTemplate($creature_id, $patch, false);
+				$this->CheckImportCreatureSmart($creature_id, $patch, false);
 			} catch (ImportException $e) {
 				throw new ImportException("importing creature smart {$creature_id} with error: {$e->getMessage()}", $e->_error);
 			}
@@ -1160,7 +1205,7 @@ class DBConverter
 		if ($gob_id)
 		{
 			try {
-				$this->CheckImportGameObjectTemplate($gob_id, $patch, false);
+				$this->CheckImportGameObjectSmart($gob_id, $patch, false);
 			} catch (ImportException $e) {
 				throw new ImportException("importing gob smart {$gob_id} with error: {$e->getMessage()}", $e->_error);
 			}
@@ -1387,7 +1432,7 @@ class DBConverter
 					$summonID = $sun_smart_entry->action_param1;
 					//echo "SmartAI {$tc_entry} ${source_type} does summon a creature {$summonID}" . PHP_EOL;
 					try {
-						$this->CheckImportCreatureTemplate($summonID, $sun_smart_entry->patch_min, false);
+						$this->CheckImportCreatureSmart($summonID, $sun_smart_entry->patch_min, false);
 					} catch (ImportException $e) {
 						LogException($e, "Smart TC {$tc_entry} {$sun_smart_entry->id}: Failed to import smart for summoned creature: {$e->getMessage()}");
 						continue;
@@ -1559,7 +1604,7 @@ class DBConverter
 		}
 	}
 	
-	function SunHasSameWaypointsScripts(array &$tcResults, array $sunResults)
+	function SunHasSameWaypointsScripts(array &$tcResults, array $sunResults) : bool
 	{
 		if(count($tcResults) != count($sunResults))
 			return false;
@@ -1638,39 +1683,70 @@ class DBConverter
 		return true;
 	}
 	
-	function DeleteWaypointsIfUnique($path_id)
+	function GetTimesUsedWaypoints($path_id)
 	{
 		assert($path_id > 0);
 		$results = FindAll($this->sunStore->creature_addon, "path_id", $path_id);
-		if($results != 1) //0 or >1
-			return;
-		
+		return count($results);
+	}
+	
+	function DeleteWaypoints($path_id)
+	{
+		fwrite($this->file, "DELETE FROM waypoint_data WHERE id = {$path_id};" . PHP_EOL);
+		fwrite($this->file, "DELETE FROM waypoint_info WHERE id = {$path_id};" . PHP_EOL);
+				
+		RemoveAny($this->sunStore->waypoint_info, "id", $path_id);
 		RemoveAny($this->sunStore->waypoint_data, "id", $path_id);
 	}
 	
-	function ReplaceWaypoints(int $guid)
+	function ReplaceWaypoints(int $guid, bool $updatePosition = true)
 	{
 		if(!array_key_exists($guid, $this->tcStore->creature_addon)) {
-			echo "ERROR: Trying to replace waypoints for creature {$guid}, but creature has no creature_addon on trinity" . PHP_EOL;
+			LogError("Trying to replace waypoints for creature {$guid}, but creature has no creature_addon on trinity");
 			return;
 		}
 		$tc_creature_addon = &$this->tcStore->creature_addon[$guid];
 		if($tc_creature_addon->path_id == 0) {
-			echo "ERROR: Trying to replace waypoints for creature {$guid}, but creature has no path_id on trinity" . PHP_EOL;
+			LogError("Trying to replace waypoints for creature {$guid}, but creature has no path_id on trinity");
 			return;
 		}
+		
+		if (array_key_exists($guid, $this->sunStore->creature_addon) && $this->sunStore->creature_addon[$guid]->path_id) 
+		{
+			$usedTimes = $this->GetTimesUsedWaypoints($this->sunStore->creature_addon[$guid]->path_id);
+			if ($usedTimes == 1) {
+				fwrite($this->file, "UPDATE creature_addon SET path_id = NULL WHERE spawnID = {$guid};" . PHP_EOL);
+				$this->DeleteWaypoints($this->sunStore->creature_addon[$guid]->path_id);
+			} else if ($usedTimes > 1)
+				fwrite($file, "-- Not deleting waypoint path {$this->sunStore->creature_addon[$guid]->path_id} because it's still used by another creature" . PHP_EOL);
+		}
+		
+		//will often be equal to tc path id, unless it's not free
 		$sun_path_id = $this->ImportWaypoints($guid, $tc_creature_addon->path_id);
 		
 		if(array_key_exists($guid, $this->sunStore->creature_addon)) {
-			$this->DeleteWaypointsIfUnique($this->sunStore->creature_addon[$guid]->path_id);
 			$this->sunStore->creature_addon[$guid]->path_id = $sun_path_id;
 			fwrite($this->file, "UPDATE creature_addon SET path_id = {$sun_path_id} WHERE spawnID = {$guid};" . PHP_EOL);
 		} else {
 			$sun_creature_addon = new stdClass;
 			$sun_creature_addon->spawnID = $guid;
-			$sun_creature_addon->path_id = $path_id;
+			$sun_creature_addon->path_id = $sun_path_id;
 			$this->sunStore->creature_addon[$guid] = $sun_creature_addon;
 			fwrite($this->file, WriteObject($this->conn, "creature_addon", $sun_creature_addon));
+		}
+		
+		if ($updatePosition)
+		{
+			if (   $this->sunStore->creature[$guid]->position_x != $this->tcStore->creature[$guid]->position_x
+			    || $this->sunStore->creature[$guid]->position_y != $this->tcStore->creature[$guid]->position_y
+				|| $this->sunStore->creature[$guid]->position_z != $this->tcStore->creature[$guid]->position_z)
+			{
+				$this->sunStore->creature[$guid]->position_x = $this->tcStore->creature[$guid]->position_x;
+				$this->sunStore->creature[$guid]->position_y = $this->tcStore->creature[$guid]->position_y;
+				$this->sunStore->creature[$guid]->position_z = $this->tcStore->creature[$guid]->position_z;
+				$this->sunStore->creature[$guid]->orientation = $this->tcStore->creature[$guid]->orientation;
+				fwrite($this->file, "UPDATE creature SET position_x = {$this->tcStore->creature[$guid]->position_x}, position_y = {$this->tcStore->creature[$guid]->position_y}, position_z = {$this->tcStore->creature[$guid]->position_z}, orientation = {$this->tcStore->creature[$guid]->orientation} WHERE spawnID = {$guid};" . PHP_EOL);
+			}
 		}
 	}
 	
@@ -1700,6 +1776,11 @@ class DBConverter
 			//we have a path with this id, but no the same...
 			$sun_path_id = GetHighest($this->sunStore->waypoint_data, "id") + 1;
 		}
+		
+		$waypoint_info = new stdClass;
+		$waypoint_info->id = $sun_path_id;
+		$this->sunStore->waypoint_info[$sun_path_id] = $waypoint_info;
+		fwrite($this->file, WriteObject($this->conn, "waypoint_info", $waypoint_info));
 		
 		foreach($results as $tc_waypoint) {
 			$sun_waypoint = $tc_waypoint; //copy
@@ -1852,11 +1933,6 @@ class DBConverter
 		}
 	}
 
-	function FilterTLKAuras(string $auras) : string
-	{
-		throw ImportException("NYI");
-	}
-	
 	function ImportCreatureTemplate($id)
 	{
 		$tc_results = FindAll($this->tcStore->creature_template, "entry", $id);

@@ -19,7 +19,8 @@ $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
 $query = "SELECT tc.*
 FROM $tcWorld.creature tc
-WHERE tc.import IS NOT NULL AND tc.import != 'IGNORE'";
+WHERE tc.import IS NOT NULL AND tc.import != 'IGNORE'
+ORDER BY tc.guid";
 
 // MAIN
 $stmt = $conn->query($query);
