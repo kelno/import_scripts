@@ -159,6 +159,11 @@ function GetConditionName(int $conditionType) : string
 	case 45: return "CONDITION_PET_TYPE";
 	case 46: return "CONDITION_TAXI";
 	case 47: return "CONDITION_QUESTSTATE";
+    case 48: return "CONDITION_QUEST_OBJECTIVE_PROGRESS";
+    case 49: return "CONDITION_DIFFICULTY_ID";
+    case 50: return "CONDITION_GAMEMASTER";
+    case 51: return "CONDITION_OBJECT_ENTRY_GUID_MASTER";
+    case 52: return "CONDITION_TYPE_MASK_MASTER";
 	default:
 		return "UNKNOWN CONDITION {$conditionType}";
 	}
