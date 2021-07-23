@@ -11,7 +11,7 @@
 ini_set('display_errors', '1');
 ini_set('display_startup_errors', '1');
 error_reporting(E_ALL | E_STRICT);
-ini_set('memory_limit','4096M'); //for the DB stores
+ini_set('memory_limit','8096M'); //for the DB stores
 
 set_error_handler(function($severity, $message, $file, $line) {
     if (error_reporting() & $severity) {
@@ -92,44 +92,48 @@ function LogDebug($msg)
 
 class DBStore
 {
-	public $broadcast_text = []; //key is broadcast id
-	public $conditions = []; //key has NO MEANING
-	public $creature = []; //key is spawnID TODO: should be NO MEANING
-	public $creature_addon = []; //key is spawnID
-	public $creature_entry = []; //key has NO MEANING
-	public $creature_formations = []; //key is memberGUID
-	public $creature_model_info = []; //key is modelid
-	public $creature_summon_groups = []; //key has NO MEANING
-	public $creature_template = []; //key has NO MEANING
-	public $creature_template_addon = []; //key has NO MEANING
-	public $creature_template_movement = []; //key has NO MEANING
-	public $creature_template_resistance = []; //key has NO MEANING
-	public $creature_template_spell = []; //key has NO MEANING
-	public $creature_text = []; //key has NO MEANING
-	public $game_event_creature = []; //key is spawnID
-	public $gameobject = []; //key is spawnID
-	public $game_event_gameobject = []; //key is spawnID
-	public $gameobject_template = [];  //key is entry
-	public $gossip_menu = []; //key has NO MEANING
-	public $gossip_menu_option = []; //key has NO MEANING
-	public $gossip_text = []; //key is text id
-	public $item_template = []; //key is item id
-	public $points_of_interest = []; //key has NO MEANING
-	public $pool_members = []; //key has NO MEANING
-	public $pool_template = []; //key is pool entry
-	public $reference_loot_template = []; //key has NO MEANING
-	public $smart_scripts = []; //key has NO MEANING
-	public $spawn_group = []; //key has NO MEANING
-	public $spell_template = []; //key is spell id
-	public $trainer = []; //key is ID
-	public $trainer_spell = []; //key has NO MEANING
-	public $waypoint_info = []; //key is ID
-	public $waypoint_data = []; //key has NO MEANING
-	public $waypoint_scripts = []; //key has NO MEANING
-	public $waypoints = []; //key has NO MEANING
+	public $broadcast_text = null; //key is broadcast id
+	public $conditions = null; //key has NO MEANING
+	public $creature = null; //key is spawnID TODO: should be NO MEANING
+	public $creature_addon = null; //key is spawnID
+	public $creature_entry = null; //key has NO MEANING
+	public $creature_formations = null; //key is memberGUID
+	public $creature_loot_template = null; //key is Entry
+	public $creature_model_info = null; //key is modelid
+	public $creature_summon_groups = null; //key has NO MEANING
+	public $creature_template = null; //key has NO MEANING
+	public $creature_template_addon = null; //key has NO MEANING
+	public $creature_template_movement = null; //key has NO MEANING
+	public $creature_template_resistance = null; //key has NO MEANING
+	public $creature_template_spell = null; //key has NO MEANING
+	public $creature_text = null; //key has NO MEANING
+	public $game_event_creature = null; //key is spawnID
+	public $gameobject = null; //key is spawnID
+	public $game_event_gameobject = null; //key is spawnID
+	public $gameobject_template = null;  //key is entry
+	public $gossip_menu = null; //key has NO MEANING
+	public $gossip_menu_option = null; //key has NO MEANING
+	public $gossip_text = null; //key is text id
+	public $item_template = null; //key is item id
+	public $pickpocketing_loot_template = null; //key is Entry
+	public $points_of_interest = null; //key has NO MEANING
+	public $pool_members = null; //key has NO MEANING
+	public $pool_template = null; //key is pool entry
+	public $reference_loot_template = null; //key has NO MEANING
+	public $skinning_loot_template = null; //key is Entry
+	public $smart_scripts = null; //key has NO MEANING
+	public $spawn_group = null; //key has NO MEANING
+	public $spell_template = null; //key is spell id
+	public $trainer = null; //key is ID
+	public $trainer_spell = null; //key has NO MEANING
+	public $waypoint_info = null; //key is ID
+	public $waypoint_data = null; //key has NO MEANING
+	public $waypoint_scripts = null; //key has NO MEANING
+	public $waypoints = null; //key has NO MEANING
 	
 	private $loadmode = null;
-	
+    private $databaseName;
+    
 	function __construct(&$conn, string $databaseName, $loadmode)
 	{
 		switch($loadmode)
@@ -143,179 +147,110 @@ class DBStore
 		}
 		
 		$this->loadmode = $loadmode;
-		
-		echo "Loading " . ($loadmode == LoadMode::sunstrider ? 'sunstrider' : 'trinity') . " store... ";
-		
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.gossip_menu");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		$this->gossip_menu = $stmt->fetchAll();
-				
-		$gossipTextTableName = $loadmode == LoadMode::sunstrider ? 'gossip_text' : 'npc_text';
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.{$gossipTextTableName}");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		foreach($stmt->fetchAll() as $v)
-            $this->gossip_text[$v->ID] = $v;
-		
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.item_template");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		foreach($stmt->fetchAll() as $v)
-			$this->item_template[$v->entry] = $v;
-			
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.gossip_menu_option");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		$this->gossip_menu_option = $stmt->fetchAll();
-		
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.broadcast_text");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		foreach($stmt->fetchAll() as $v)
-			$this->broadcast_text[$v->ID] = $v;
-		
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.creature_template");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		$this->creature_template = $stmt->fetchAll();
-		
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.creature_template_addon");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		$this->creature_template_addon = $stmt->fetchAll();
-        
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.creature_template_movement");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		$this->creature_template_movement = $stmt->fetchAll();
-        
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.creature_template_resistance");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		$this->creature_template_resistance = $stmt->fetchAll();
-        
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.creature_template_spell");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		$this->creature_template_spell = $stmt->fetchAll();
-        
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.gameobject_template");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		foreach($stmt->fetchAll() as $v)
-            $this->gameobject_template[$v->entry] = $v;
-		
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.conditions");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		$this->conditions = $stmt->fetchAll();
-		
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.creature_summon_groups");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		$this->creature_summon_groups = $stmt->fetchAll();
-
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.points_of_interest");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		$this->points_of_interest = $stmt->fetchAll();
-		
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.smart_scripts");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		$this->smart_scripts = $stmt->fetchAll();
-		
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.reference_loot_template");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		$this->reference_loot_template = $stmt->fetchAll();
-		
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.creature_text");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		$this->creature_text = $stmt->fetchAll();
-	
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.waypoints");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		$this->waypoints = $stmt->fetchAll();
-		
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.waypoint_data");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		$this->waypoint_data = $stmt->fetchAll();
-		
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.waypoint_scripts");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		foreach($stmt->fetchAll() as $v)
-            $this->waypoint_scripts[$v->id] = $v;
-	
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.creature");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		$keyName = $loadmode == LoadMode::sunstrider ? 'spawnID' : 'guid';
-		foreach($stmt->fetchAll() as $v)
-            $this->creature[$v->$keyName] = $v;
-		
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.creature_addon");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		$keyName = $loadmode == LoadMode::sunstrider ? 'spawnID' : 'guid';
-		foreach($stmt->fetchAll() as $v)
-            $this->creature_addon[$v->$keyName] = $v;
-		
-		if ($loadmode == LoadMode::sunstrider) {
-            $stmt = $conn->query("SELECT * FROM {$databaseName}.creature_entry");
-            $stmt->setFetchMode(PDO::FETCH_OBJ);
-            $this->creature_entry = $stmt->fetchAll();
-            
-            $stmt = $conn->query("SELECT * FROM {$databaseName}.trainer");
-            $stmt->setFetchMode(PDO::FETCH_OBJ);
-            foreach($stmt->fetchAll() as $v)
-                $this->trainer[$v->Id] = $v;
-            
-            $stmt = $conn->query("SELECT * FROM {$databaseName}.trainer_spell");
-            $stmt->setFetchMode(PDO::FETCH_OBJ);
-            $this->trainer_spell = $stmt->fetchAll();
-            
-            $stmt = $conn->query("SELECT * FROM {$databaseName}.spell_template");
-            $stmt->setFetchMode(PDO::FETCH_OBJ);
-            foreach($stmt->fetchAll() as $v)
-                $this->spell_template[$v->entry] = $v->spellName1;
-            
-            $stmt = $conn->query("SELECT * FROM {$databaseName}.waypoint_info");
-            $stmt->setFetchMode(PDO::FETCH_OBJ);
-            foreach($stmt->fetchAll() as $v)
-                $this->waypoint_info[$v->id] = $v;
-		}
-		
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.gameobject");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		foreach($stmt->fetchAll() as $v)
-            $this->gameobject[$v->guid] = $v;
-		
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.game_event_gameobject");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		foreach($stmt->fetchAll() as $v)
-            $this->game_event_gameobject[$v->guid] = $v;
-				
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.game_event_creature");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		foreach($stmt->fetchAll() as $v)
-            $this->game_event_creature[$v->guid] = $v;
-		
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.creature_formations");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		foreach($stmt->fetchAll() as $v) {
-            $this->creature_formations[$v->memberGUID] = $v;
-            if (!$v->leaderGUID)
-                $this->creature_formations[$v->memberGUID]->leaderGUID = $v->memberGUID; //special handling for leader, it's always NULL in db for leader
-		}
-		
-		$index_name = $loadmode == LoadMode::sunstrider ? 'modelid' : 'DisplayID';
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.creature_model_info");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		foreach($stmt->fetchAll() as $v)
-            $this->creature_model_info[$v->$index_name] = $v;
-		
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.spawn_group");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		$this->spawn_group = $stmt->fetchAll();
-		
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.pool_members");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		$this->pool_members = $stmt->fetchAll();
-		
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.pool_template");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		foreach($stmt->fetchAll() as $v)
-			$this->pool_template[$v->entry] = $v;
-		
-		
-		echo "\tDone" . PHP_EOL;
+        $this->databaseName = $databaseName;
 	}
+
+    function LoadTableNoKey(&$conn, $tableName)
+    {
+		$stmt = $conn->query("SELECT * FROM {$this->databaseName}.{$tableName}");
+		$stmt->setFetchMode(PDO::FETCH_OBJ);
+		$this->$tableName = $stmt->fetchAll();
+    }
+    
+    function LoadTableWithKey(&$conn, $tableName, $keyName)
+    {
+        $stmt = $conn->query("SELECT * FROM {$this->databaseName}.{$tableName}");
+		$stmt->setFetchMode(PDO::FETCH_OBJ);
+		foreach($stmt->fetchAll() as $v)
+        {
+			$this->$tableName[$v->$keyName] = $v;
+            //HACK //special handling for leader, it's always NULL in db for leader
+            if ($tableName == "creature_formations" && !$v->leaderGUID)
+                $this->creature_formations[$v->memberGUID]->leaderGUID = $v->memberGUID;
+        }
+    }
+    
+    function LoadTable(&$conn, $tableName)
+    {
+        global $loadTableInfos;
+        
+        if ($this->$tableName != null)
+            return; //already loaded
+        
+        if (!isset($loadTableInfos[$tableName]))
+			throw new ImportException("Could not find load table info for table {$tableName}");
+        
+        $this->$tableName = [];
+        $key = $this->loadmode == LoadMode::sunstrider ? $loadTableInfos[$tableName]->sunKey : $loadTableInfos[$tableName]->tcKey;
+        
+        if ($key != null)
+            $this->LoadTableWithKey($conn, $tableName, $key);
+        else
+            $this->LoadTableNoKey($conn, $tableName, $key);
+    }
 }
 
+class LoadTableInfo
+{
+    public $sunKey;
+    public $tcKey;
+    public $disableSun;
+    public $disableTC;
+    
+	function __construct($sun = null, $tc = null, $disableSun = false, $disableTC = false) 
+    {
+        $sunKey = $sun;
+        $tcKey = $tc;
+        $disableSun = $disableSun;
+        $disableTC = $disableTC;
+    }
+}
+
+$loadTableInfos = [];
+$loadTableInfos["broadcast_text"] = new LoadTableInfo("ID", "ID");
+$loadTableInfos["creature"] = new LoadTableInfo("spawnID", "spawnID"); //key is spawnID TODO: should be NO MEANING (have to change usage)
+$loadTableInfos["creature_addon"] = new LoadTableInfo("spawnID", "guid");
+$loadTableInfos["creature_entry"] = new LoadTableInfo(null, null, false, true);
+$loadTableInfos["conditions"] = new LoadTableInfo();
+$loadTableInfos["creature_formations"] = new LoadTableInfo("memberGUID", "memberGUID");
+$loadTableInfos["creature_loot_template"] = new LoadTableInfo("Entry", "Entry");
+$loadTableInfos["creature_model_info"] = new LoadTableInfo("modelid", "DisplayID");
+$loadTableInfos["creature_summon_groups"] = new LoadTableInfo();
+$loadTableInfos["creature_template"] = new LoadTableInfo();
+$loadTableInfos["creature_template_addon"] = new LoadTableInfo();
+$loadTableInfos["creature_template_movement"] = new LoadTableInfo();
+$loadTableInfos["creature_template_resistance"] = new LoadTableInfo();
+$loadTableInfos["creature_template_spell"] = new LoadTableInfo();
+$loadTableInfos["creature_text"] = new LoadTableInfo();
+$loadTableInfos["game_event_creature"] = new LoadTableInfo("guid", "guid");
+$loadTableInfos["game_event_gameobject"] = new LoadTableInfo("guid", "guid");
+$loadTableInfos["gameobject"] = new LoadTableInfo("spawnID", "guid");
+$loadTableInfos["gameobject_template"] = new LoadTableInfo("entry", "entry");
+$loadTableInfos["gossip_menu"] = new LoadTableInfo();
+$loadTableInfos["gossip_menu_option"] = new LoadTableInfo();
+$loadTableInfos["gossip_text"] = new LoadTableInfo("ID", null, false, true); // npc_text on TC
+$loadTableInfos["item_template"] = new LoadTableInfo("entry", "entry");
+$loadTableInfos["npc_text"] = new LoadTableInfo(null, "ID", true, false); // gossip_text on Sun
+$loadTableInfos["pickpocketing_loot_template"] = new LoadTableInfo("Entry", "Entry");
+$loadTableInfos["points_of_interest"] = new LoadTableInfo();
+$loadTableInfos["pool_members"] = new LoadTableInfo();
+$loadTableInfos["pool_template"] = new LoadTableInfo("entry", "entry");
+$loadTableInfos["reference_loot_template"] = new LoadTableInfo("Entry", "Entry");
+$loadTableInfos["skinning_loot_template"] = new LoadTableInfo("Entry", "Entry");
+$loadTableInfos["smart_scripts"] = new LoadTableInfo();
+$loadTableInfos["spawn_group"] = new LoadTableInfo();
+$loadTableInfos["spell_template"] = new LoadTableInfo("entry", null, false, true);
+$loadTableInfos["trainer"] = new LoadTableInfo("Id", "Id");
+$loadTableInfos["trainer_spell"] = new LoadTableInfo();
+$loadTableInfos["waypoints"] = new LoadTableInfo();
+$loadTableInfos["waypoint_data"] = new LoadTableInfo();
+$loadTableInfos["waypoint_info"] = new LoadTableInfo("id", null, false, true);
+$loadTableInfos["waypoint_scripts"] = new LoadTableInfo("id", "id");
+
+/*
+public $gossip_text = null; //key is text id
+*/
+    
 class DBConverter
 {
 	public $conn;
@@ -342,6 +277,16 @@ class DBConverter
 		$this->sunStore = new DBStore($this->conn, $sunWorld, LoadMode::sunstrider);
 		$this->tcStore  = new DBStore($this->conn, $tcWorld,  LoadMode::trinitycore);
 	}
+    
+    function LoadTable($tableName)
+    {
+		echo "Loading tables {$tableName}... ";
+        
+        $this->sunStore->LoadTable($this->conn, $tableName);
+        $this->tcStore->LoadTable($this->conn, $tableName);
+        
+		echo "   Done" . PHP_EOL;
+    }
 	
 	/* This test pass if:
 	- sunContainer does not contain key with this value
@@ -385,6 +330,8 @@ class DBConverter
 	//overrideCheckSourceEntry is for menus that changed id, condition must apply to that new menu
 	function SunHasCondition(&$tc_condition, $overrideCheckSourceEntry = null)
 	{
+        $this->LoadTable("conditions");
+        
 		//probably wrong... can't use the $key for sunstore here
 		foreach(array_keys($this->sunStore->conditions) as $key) {
 			if (   $tc_condition->SourceTypeOrReferenceId == $this->sunStore->conditions[$key]->SourceTypeOrReferenceId
@@ -481,6 +428,8 @@ class DBConverter
 			return $tc_text_id;
 		}
 		
+        $this->LoadTable("gossip_text");
+        
 		LogDebug("Importing text {$tc_text_id}");
 		
 		if (!array_key_exists($tc_text_id, $this->tcStore->gossip_text)) {
@@ -544,6 +493,8 @@ class DBConverter
 			return;
 		}
 		
+        $this->LoadTable("points_of_interest");
+        
 		$results = FindAll($this->tcStore->points_of_interest, "ID", $poi_id);
 		if (count($results) != 1) {
 			echo "TC points_of_interest has 0 or > 1 PoI for id {$poi_id}" . PHP_EOL;
@@ -580,6 +531,8 @@ class DBConverter
 			return;
 		}
 		
+        $this->LoadTable("gossip_menu_option");
+        
 		$results = FindAll($this->tcStore->gossip_menu_option, "MenuID", $tc_menu_id);
 		if (empty($results))
 			return; //no menu options found, this is a normal case
@@ -639,6 +592,9 @@ class DBConverter
 		if (CheckAlreadyImported($sunMenuID))
 			return;
 		
+        $this->LoadTable("creature_template");
+        $this->LoadTable("gossip_menu");
+        
 		//only delete if only one menu is found
 		$results = FindAll($this->sunStore->creature_template, "gossip_menu_id", $sunMenuID);
 		if (empty($results)) {
@@ -686,6 +642,8 @@ class DBConverter
 			return $tc_menu_id;
 		}
 		
+        $this->LoadTable("gossip_menu");
+        
 		$this->timelol("CM1");
 		
 		$results = FindAll($this->tcStore->gossip_menu, "MenuID", $tc_menu_id);
@@ -741,6 +699,8 @@ class DBConverter
 
 	function FindAllSmart(int $sun, int $entryorguid, int $source_type) : array
 	{
+        $this->LoadTable("smart_scripts");
+        
 		$results = [];
 		
 		$this->timelol("FA1");
@@ -772,6 +732,8 @@ class DBConverter
 
 	function DeleteAllSmart(int $entryorguid, int $source_type)
 	{
+        $this->LoadTable("smart_scripts");
+        
 		$this->timelol("a");
 		
 		if (CheckAlreadyImported($entryorguid + $source_type << 28)) //max entry is 30.501.000 (smaller number with 28 bits shift is 268.435.456)
@@ -816,6 +778,7 @@ class DBConverter
 			LogDebug("Creature text {$tc_entry} is already imported");
 			return;
 		}
+        $this->LoadTable("creature_text");
 		
 		$this->timelol("CCT1");
 		
@@ -844,6 +807,8 @@ class DBConverter
 			return;
 		}
 		
+        $this->LoadTable("conditions");
+        
 		static $CONDITION_SOURCE_TYPE_SMART_EVENT = 22;
 		 
 		foreach(array_keys($this->tcStore->conditions) as $key) {
@@ -876,6 +841,8 @@ class DBConverter
 			return;
 		}
 		
+        $this->LoadTable("creature_summon_groups");
+        
 		// could be improved, currently we just port everything and ignore group
 		$results = FindAll($this->tcStore->creature_summon_groups, "summonerId", $npcEntry);
 		if (empty($results))
@@ -912,6 +879,8 @@ class DBConverter
 			LogDebug("Smart Waypoints {$path_id} are already imported");
 			return;
 		}
+        
+        $this->LoadTable("waypoints");
 		
 		$results = FindAll($this->tcStore->waypoints, "entry", $path_id);
 		if (empty($results)) 
@@ -961,6 +930,8 @@ class DBConverter
 		if (CheckAlreadyImported($creature_id))
 			return;
         
+        $this->LoadTable("creature_template_addon");
+        
 		$tc_results = FindAll($this->tcStore->creature_template_addon, "entry", $creature_id);
 		if (empty($tc_results))
             return;
@@ -972,7 +943,7 @@ class DBConverter
         // copy TC one and make some arrangements
 		$creature_template_addon = $tc_results[0];
         $creature_template_addon->patch = 5;
-        $standState = $creature_template_addon->bytes1 & 0xF;
+        $standState = $creature_template_addon->bytes1 & 0xF; // first byte is stand state
         $creature_template_addon->standState = $standState;
         unset($creature_template_addon->bytes1);
         unset($creature_template_addon->bytes2);
@@ -990,6 +961,8 @@ class DBConverter
     {
 		if (CheckAlreadyImported($creature_id))
 			return;
+        
+        $this->LoadTable("creature_template_movement");
         
 		$tc_results = FindAll($this->tcStore->creature_template_movement, "CreatureId", $creature_id);
 		if (empty($tc_results))
@@ -1011,6 +984,8 @@ class DBConverter
     {
 		if (CheckAlreadyImported($creature_id))
 			return;
+        
+        $this->LoadTable("creature_template_resistance");
         
         $tc_results = FindAll($this->tcStore->creature_template_resistance, "CreatureID", $creature_id);
 		if (empty($tc_results))
@@ -1035,6 +1010,8 @@ class DBConverter
 		if (CheckAlreadyImported($creature_id))
 			return;
         
+        $this->LoadTable("creature_template_spell");
+        
         $tc_results = FindAll($this->tcStore->creature_template_spell, "CreatureID", $creature_id);
 		if (empty($tc_results))
             return;
@@ -1057,6 +1034,8 @@ class DBConverter
 	{
 		if (CheckAlreadyImported($creature_id))
 			return;
+        
+        $this->LoadTable("creature_template");
         
 		$tc_results = FindAll($this->tcStore->creature_template, "entry", $creature_id);
 		if (empty($tc_results))
@@ -1101,6 +1080,9 @@ class DBConverter
 		if (CheckAlreadyImported($creature_id))
 			return;
 		
+        $this->LoadTable("creature_template");
+        $this->LoadTable("smart_scripts");
+        
 		$tc_results = FindAll($this->tcStore->creature_template, "entry", $creature_id);
 		if (empty($tc_results))
 			throw new ImportException("Has a reference on a non existing creature {$creature_id}");
@@ -1156,6 +1138,8 @@ class DBConverter
 		if (CheckAlreadyImported($gob_id))
 			return;
 		
+        $this->LoadTable("gameobject_template");
+        
 		if (!array_key_exists($gob_id, $this->tcStore->gameobject_template))
 			throw new ImportException("Smart reference a non existing gameobject {$gob_id}");
 		
@@ -1208,6 +1192,8 @@ class DBConverter
 
 	function CheckImportCreature(int $spawnID)
 	{
+        $this->LoadTable("creature");
+        
 		if (!array_key_exists($spawnID, $this->tcStore->creature))
 			throw new ImportException("Smart TC trying to target a non existing creature guid {$spawnID}... this is a tc db error. Ignoring.", false);
 			
@@ -1227,6 +1213,8 @@ class DBConverter
 	
 	function CheckImportGameObject(int $spawnID)
 	{
+        $this->LoadTable("gameobject");
+        
 		if (!array_key_exists($spawnID, $this->tcStore->gameobject))
 			throw new ImportException("Smart TC trying to target a non existing creature guid {$spawnID} on their own db... this is a tc db error. Ignoring.");
 
@@ -1247,6 +1235,8 @@ class DBConverter
 	// return creature id for this target (import if missing)
 	function GetTargetCreatureId($sun_smart_entry, int $creature_id, int& $patch) : int
 	{
+        $this->LoadTable("creature");
+        
 		switch($sun_smart_entry->target_type)
 		{
 			case SmartTarget::NONE:
@@ -1318,6 +1308,8 @@ class DBConverter
 	// return gob id for this target (import if missing)
 	function GetTargetGameObjectId($sun_smart_entry, int $gob_id, int& $patch) : int
 	{
+        $this->LoadTable("gameobject");
+        
 		switch($sun_smart_entry->target_type) {
 			case SmartTarget::NONE:
 			case SmartTarget::SELF:
@@ -1399,7 +1391,6 @@ class DBConverter
 
 	function ImportSmartActionList(int $source_type, int $action_list_entry, int $original_type, int $original_entry, $sun_smart_entry, int& $patch)
 	{
-
 		$original_entry = $this->GetTargetId($sun_smart_entry, $original_type, $original_entry, $patch);
 		$this->CreateSmartAI($action_list_entry, SmartSourceType::timedactionlist, $original_type, $original_entry); 	
 	}
@@ -1412,6 +1403,9 @@ class DBConverter
 			return;
 		}
 		
+        $this->LoadTable("smart_scripts");
+        $this->LoadTable("spell_template");
+        
 		$this->timelol("1");
 		
 		$sql = "";
@@ -1706,6 +1700,9 @@ class DBConverter
 		if (CheckAlreadyImported($spawn_id))
 			return;
 		
+        $this->LoadTable("smart_scripts");
+        $this->LoadTable("creature_addon");
+        
 		$sql = "CALL DeleteCreature({$spawn_id});" . PHP_EOL;
 		fwrite($this->file, $sql);
 				
@@ -1740,6 +1737,8 @@ class DBConverter
 		if (CheckAlreadyImported($creature_id))
 			return;
 		
+        $this->LoadTable("creature_entry");
+        
 		$results = FindAll($this->sunStore->creature_entry, "entry", $creature_id);
 		foreach($results as $result) {
 			if (!in_array($result->spawnID, $not_in))
@@ -1752,6 +1751,8 @@ class DBConverter
 		if (CheckAlreadyImported($map_id))
 			return;
 		
+        $this->LoadTable("gameobject");
+        
 		$results = FindAll($this->sunStore->gameobject, "map", $map_id);
 		foreach($results as $result) {
 			if (!in_array($result->guid, $not_in))
@@ -1764,6 +1765,8 @@ class DBConverter
 		if (CheckAlreadyImported($map_id))
 			return;
 		
+        $this->LoadTable("creature");
+        
 		$results = FindAll($this->sunStore->creature, "map", $map_id);
 		foreach($results as $result) {
 			if (!in_array($result->spawnID, $not_in))
@@ -1790,6 +1793,8 @@ class DBConverter
 		if (CheckAlreadyImported($action_id))
 			return $action_id;
 		
+        $this->LoadTable("waypoint_scripts");
+        
 		$results = FindAll($this->tcStore->waypoint_scripts, "id", $action_id);
 		if (empty($results))
 			throw new ImportException("ERROR: Tried to import waypoint_scripts with id {$action_id} but no such entry exists");
@@ -1852,6 +1857,8 @@ class DBConverter
 	
 	function GetTimesUsedWaypoints($path_id)
 	{
+        $this->LoadTable("creature_addon");
+        
 		assert($path_id > 0);
 		$results = FindAll($this->sunStore->creature_addon, "path_id", $path_id);
 		return count($results);
@@ -1859,6 +1866,9 @@ class DBConverter
 	
 	function DeleteWaypoints($path_id)
 	{
+        $this->LoadTable("waypoint_info");
+        $this->LoadTable("waypoint_data");
+        
 		fwrite($this->file, "DELETE FROM waypoint_data WHERE id = {$path_id};" . PHP_EOL);
 		fwrite($this->file, "DELETE FROM waypoint_info WHERE id = {$path_id};" . PHP_EOL);
 				
@@ -1868,6 +1878,9 @@ class DBConverter
 	
 	function ReplaceWaypoints(int $guid, bool $updatePosition = true)
 	{
+        $this->LoadTable("creature");
+        $this->LoadTable("creature_addon");
+        
 		if (!array_key_exists($guid, $this->tcStore->creature_addon)) {
 			LogError("Trying to replace waypoints for creature {$guid}, but creature has no creature_addon on trinity");
 			return;
@@ -1920,6 +1933,10 @@ class DBConverter
 	//return new path_id
 	function ImportWaypoints(int $guid, int $tc_path_id, bool $includeMovementTypeUpdate = true) : int
 	{
+        $this->LoadTable("creature");
+        $this->LoadTable("waypoint_data");
+        $this->LoadTable("waypoint_info");
+        
 		$results = FindAll($this->tcStore->waypoint_data, "id", $tc_path_id);
 		if (empty($results))
 		{
@@ -1974,6 +1991,8 @@ class DBConverter
 		if (CheckAlreadyImported($guid + $creature << 31))
 			return;
 		
+        $this->LoadTable("spawn_group");
+        
 		$results = FindAll($this->tcStore->spawn_group, "spawnId", $guid);
 		foreach($results as $result) {
 			if ($creature) {
@@ -2000,6 +2019,8 @@ class DBConverter
 	
 	function ImportFormation(int $guid)
 	{
+        $this->LoadTable("creature_formations");
+        
 		if (!array_key_exists($guid, $this->tcStore->creature_formations))
 			return;
 		
@@ -2052,6 +2073,10 @@ class DBConverter
 
 	function ImportPool(int $guid, bool $creature) //else gameobject
 	{
+        $this->LoadTable("pool_creature");
+        $this->LoadTable("pool_gameobject");
+        $this->LoadTable("pool_template");
+        
 		$tc_pool_entry = null;
 		if ($creature) {
 			if (!array_key_exists($guid, $this->tcStore->pool_creature))
@@ -2102,6 +2127,8 @@ class DBConverter
 
 	function HasSunModelInTemplate($creature_id, $model_id)
 	{
+        $this->LoadTable("creature_template");
+        
 		//check if template for this creature has this modelid. Also check the modelids other gender.
 		$sun_results = FindAll($this->sunStore->creature_template, "entry", $creature_id);
 		if (!empty($sun_results)) {
@@ -2133,6 +2160,10 @@ class DBConverter
 		if (CheckAlreadyImported($guid))
 			return;
 		
+        $this->LoadTable("creature");
+        $this->LoadTable("creature_addon");
+        $this->LoadTable("creature_entry");
+        
 		if (array_key_exists($guid, $this->sunStore->creature)) 
 			return;
 		
@@ -2246,6 +2277,9 @@ class DBConverter
 		if (CheckAlreadyImported($creature_id))
 			return;
 			
+        $this->LoadTable("creature");
+        $this->LoadTable("creature_entry");
+        
 		$results = FindAll($this->tcStore->creature, "id", $creature_id);
 		if (empty($results))
 			throw new ImportException("Failed to find any TC creature with id {$creature_id}");
@@ -2270,6 +2304,9 @@ class DBConverter
 		if (CheckAlreadyImported($map_id))
 			return;
 			
+        $this->LoadTable("creature");
+        $this->LoadTable("gameobject");
+        
 		//handle creatures
 		$results = FindAll($this->tcStore->creature, "map", $map_id);
 		if (empty($results)) 
@@ -2311,6 +2348,8 @@ class DBConverter
 	
 	function ImportGameObjectTemplate($id)
 	{
+        $this->LoadTable("gameobject_template");
+        
 		assert(array_key_exists($id, $this->tcStore->gameobject_template));
 		$tc_gameobject_template = &$this->tcStore->gameobject_template[$id];
 		
@@ -2349,12 +2388,16 @@ class DBConverter
 		if (CheckAlreadyImported($guid))
 			return;
 		
+        $this->LoadTable("gameobject");
+        $this->LoadTable("gameobject_template");
+        $this->LoadTable("game_event_gameobject");
+        
 		if (array_key_exists($guid, $this->sunStore->gameobject))
 			return;
 		
 		$tc_gameobject = &$this->tcStore->gameobject[$guid];
 		
-		$tlk_gameobject = !array_key_exists($tc_gameobject->id, $this->sunStore->gameobject_template);
+		$tlk_gameobject = !array_key_exists($tc_gameobject->id, $this->sunStore->gameobject_template); //TODO not valid anymore? since we have TLK objects
 		if ($tlk_gameobject) {
 			ImportGameObjectTemplate($tc_gameobject->id);
 			if (IsTLKGameObject($tc_gameobject->id) && $patch_min < 5)
@@ -2405,6 +2448,8 @@ class DBConverter
 		if (CheckAlreadyImported($spawn_id))
 			return;
 		
+        $this->LoadTable("smart_scripts");
+        
 		$sql = "CALL DeleteGameObject({$spawn_id});" . PHP_EOL;
 		fwrite($this->file, $sql);
 				
@@ -2431,6 +2476,8 @@ class DBConverter
 		if (CheckAlreadyImported($gob_id))
 			return;
 		
+        $this->LoadTable("gameobject");
+        
 		$results = FindAll($this->sunStore->gameobject, "id", $gob_id);
 		foreach($results as $result) {
 			if (!in_array($result->guid, $not_in))
@@ -2443,6 +2490,8 @@ class DBConverter
 		if (CheckAlreadyImported($gob_id))
 			return;
 			
+        $this->LoadTable("gameobject");
+        
 		$results = FindAll($this->tcStore->gameobject, "id", $gob_id);
 		if (empty($results)) 
 			throw new ImportException("Failed to find any TC gameobject with id {$gob_id}");

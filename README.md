@@ -20,7 +20,7 @@ ALTER TABLE `trinityworld`.`gameobject`
  Interactive UI, help to choose which gossip to import
 
 **gossips_import.php**:  
- Import from TC creature_template table
+ Import from TC gossip menus and related tables
  
 **gob_import.php**:  
  Import from TC gameobject table
@@ -32,3 +32,5 @@ ALTER TABLE `trinityworld`.`gameobject`
  Old script to match sun game events to tc game events
 
  
+ **creature_template_import.php**:
+ Import from TC creature_template table
