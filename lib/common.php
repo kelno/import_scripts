@@ -54,7 +54,7 @@ function LogError($msg)
 }
 
 //expect ImportException
-function LogException($e, $msg = "")
+function LogException($e, string $msg = "")
 {
 	if ($msg == "")
 		$msg = $e->getMessage();
@@ -65,7 +65,7 @@ function LogException($e, $msg = "")
 		LogWarning($msg);
 }
 
-function LogWarning($msg)
+function LogWarning(string $msg)
 {
 	global $warnings, $file;
 
@@ -73,14 +73,14 @@ function LogWarning($msg)
 	fwrite($file, "-- WARNING {$msg}" . PHP_EOL);
 	++$warnings;
 }
-function LogNotice($msg)
+function LogNotice(string $msg)
 {
 	global $file;
 
 	echo "NOTICE: {$msg}" . PHP_EOL;
 	fwrite($file, "-- NOTICE {$msg}" . PHP_EOL);
 }
-function LogDebug($msg)
+function LogDebug(string $msg)
 {
 	global $debug, $file;
 
@@ -150,14 +150,14 @@ class DBStore
         $this->databaseName = $databaseName;
 	}
 
-    function LoadTableNoKey(&$conn, $tableName)
+    function LoadTableNoKey(&$conn, string $tableName)
     {
 		$stmt = $conn->query("SELECT * FROM {$this->databaseName}.{$tableName}");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
 		$this->$tableName = $stmt->fetchAll();
     }
     
-    function LoadTableWithKey(&$conn, $tableName, $keyName)
+    function LoadTableWithKey(&$conn, string $tableName, string $keyName)
     {
         $stmt = $conn->query("SELECT * FROM {$this->databaseName}.{$tableName}");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
@@ -170,7 +170,7 @@ class DBStore
         }
     }
     
-    function LoadTable(&$conn, $tableName)
+    function LoadTable(&$conn, string $tableName)
     {
         global $loadTableInfos;
         
@@ -197,7 +197,7 @@ class LoadTableInfo
     public $disableSun;
     public $disableTC;
     
-	function __construct($sun = null, $tc = null, $disableSun = false, $disableTC = false) 
+	function __construct(string $sun = null, string $tc = null, bool $disableSun = false, bool $disableTC = false) 
     {
         $sunKey = $sun;
         $tcKey = $tc;
@@ -247,10 +247,6 @@ $loadTableInfos["waypoint_data"] = new LoadTableInfo();
 $loadTableInfos["waypoint_info"] = new LoadTableInfo("id", null, false, true);
 $loadTableInfos["waypoint_scripts"] = new LoadTableInfo("id", "id");
 
-/*
-public $gossip_text = null; //key is text id
-*/
-    
 class DBConverter
 {
 	public $conn;
@@ -278,7 +274,7 @@ class DBConverter
 		$this->tcStore  = new DBStore($this->conn, $tcWorld,  LoadMode::trinitycore);
 	}
     
-    function LoadTable($tableName)
+    function LoadTable(string $tableName)
     {
 		echo "Loading tables {$tableName}... ";
         
@@ -920,7 +916,7 @@ class DBConverter
         if ($tcFlags & TCCreatureFlagsExtra::CREATURE_FLAG_EXTRA_NO_PLAYER_DAMAGE_REQ)
             $sunFlags |= SunCreatureFlagsExtra::CREATURE_FLAG_EXTRA_NO_PLAYER_DAMAGE_REQ;
         
-        //others have no equivalence as of writing
+        //others have no equivalence as of writing (23/07/2021)
         
         return $sunFlags;
     }
