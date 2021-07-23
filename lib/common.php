@@ -108,10 +108,11 @@ class DBStore
 	public $gossip_menu = []; //key has NO MEANING
 	public $gossip_menu_option = []; //key has NO MEANING
 	public $gossip_text = []; //key is text id
+	public $item_template = []; //key is item id
 	public $points_of_interest = []; //key has NO MEANING
-	public $pool_creature = []; //key is spawnID
-	public $pool_gameobject = []; //key is spawnID
+	public $pool_members = []; //key has NO MEANING
 	public $pool_template = []; //key is pool entry
+	public $reference_loot_template = []; //key has NO MEANING
 	public $smart_scripts = []; //key has NO MEANING
 	public $spawn_group = []; //key has NO MEANING
 	public $spell_template = []; //key is spell id

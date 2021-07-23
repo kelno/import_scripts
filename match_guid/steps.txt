@@ -1,0 +1,42 @@
+Step1:
+
+Better matching!
+
+SELECT sc.spawnID AS sunGuid, tc.guid AS tcGuid, tc.toSunGuid
+FROM world.creature_entry ce
+JOIN world.creature sc ON ce.spawnID > 1000000 AND ce.spawnID = sc.spawnID
+LEFT JOIN trinityworld.creature tc ON 
+	ce.entry = tc.id 
+	AND sc.position_x - 5 < tc.position_x 
+	AND sc.position_x + 5 > tc.position_x 
+	AND sc.position_y - 5 < tc.position_y 
+	AND sc.position_y + 5 > tc.position_y 
+	AND sc.position_z - 5 < tc.position_z 
+	AND sc.position_z + 5 > tc.position_z 
+	AND sc.map = tc.map
+LEFT JOIN world.creature sc2 ON sc2.spawnID = tc.guid
+
+WHERE 
+sc2.spawnId IS NULL AND 
+tc.guid IS NOT NULL
+ORDER BY toSunGuid, sunGuid
+LIMIT 1000000
+
+Penser à update les pos hihi
+
+Better matching (gameobjects)
+
+Step 2:
+
+Import creatures
+	Séparer 
+	A - celles qu'on a pas à cet endroit
+	B - celles qu'on a pas à cet endroit MAIS qui est déjà spawn UNE fois ailleurs dans le monde. 
+	Importer A en batch
+	Importer B à la main
+	
+Import gameobjects
+	Check à la main tout ? Pour commencer oui.
+	
+Step 3:
+	Check les creatures qu'on a qui ont pas de paths et qui en ont chez TC

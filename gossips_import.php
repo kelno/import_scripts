@@ -71,7 +71,7 @@ foreach($stmt->fetchAll() as $v) {
 			if($current_sun_menu_id = $v['sunMenuID'])
 				if($current_sun_menu_id != $new_menu_id)
 					$converter->DeleteSunMenu($current_sun_menu_id);
-	
+
 			break;
 		default:
 			echo "ERROR: Non handled enum value: " . $v["import"] . PHP_EOL;
