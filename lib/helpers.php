@@ -219,5 +219,5 @@ function IsTLKGameObject(int $gob_id) : bool
 
 function IsTLKCreature(int $creature_id) : bool
 {
-	return $creature_id > 29095; 
+	return $creature_id > 2909 && $creature_id < 1000000; // those are customs
 }
