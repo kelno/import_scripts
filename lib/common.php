@@ -19,6 +19,7 @@ set_error_handler(function($severity, $message, $file, $line) {
     }
 });
 
+include_once(__DIR__ . '/enums.php');
 include_once(__DIR__ . '/helpers.php');
 include_once(__DIR__ . '/smartai.php');
 include_once(__DIR__ . '/../config.php');
@@ -100,6 +101,10 @@ class DBStore
 	public $creature_model_info = []; //key is modelid
 	public $creature_summon_groups = []; //key has NO MEANING
 	public $creature_template = []; //key has NO MEANING
+	public $creature_template_addon = []; //key has NO MEANING
+	public $creature_template_movement = []; //key has NO MEANING
+	public $creature_template_resistance = []; //key has NO MEANING
+	public $creature_template_spell = []; //key has NO MEANING
 	public $creature_text = []; //key has NO MEANING
 	public $game_event_creature = []; //key is spawnID
 	public $gameobject = []; //key is spawnID
@@ -149,8 +154,13 @@ class DBStore
 		$stmt = $conn->query("SELECT * FROM {$databaseName}.{$gossipTextTableName}");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
 		foreach($stmt->fetchAll() as $v)
-			$this->gossip_text[$v->ID] = $v;
+            $this->gossip_text[$v->ID] = $v;
 		
+		$stmt = $conn->query("SELECT * FROM {$databaseName}.item_template");
+		$stmt->setFetchMode(PDO::FETCH_OBJ);
+		foreach($stmt->fetchAll() as $v)
+			$this->item_template[$v->entry] = $v;
+			
 		$stmt = $conn->query("SELECT * FROM {$databaseName}.gossip_menu_option");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
 		$this->gossip_menu_option = $stmt->fetchAll();
@@ -164,10 +174,26 @@ class DBStore
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
 		$this->creature_template = $stmt->fetchAll();
 		
+		$stmt = $conn->query("SELECT * FROM {$databaseName}.creature_template_addon");
+		$stmt->setFetchMode(PDO::FETCH_OBJ);
+		$this->creature_template_addon = $stmt->fetchAll();
+        
+		$stmt = $conn->query("SELECT * FROM {$databaseName}.creature_template_movement");
+		$stmt->setFetchMode(PDO::FETCH_OBJ);
+		$this->creature_template_movement = $stmt->fetchAll();
+        
+		$stmt = $conn->query("SELECT * FROM {$databaseName}.creature_template_resistance");
+		$stmt->setFetchMode(PDO::FETCH_OBJ);
+		$this->creature_template_resistance = $stmt->fetchAll();
+        
+		$stmt = $conn->query("SELECT * FROM {$databaseName}.creature_template_spell");
+		$stmt->setFetchMode(PDO::FETCH_OBJ);
+		$this->creature_template_spell = $stmt->fetchAll();
+        
 		$stmt = $conn->query("SELECT * FROM {$databaseName}.gameobject_template");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
 		foreach($stmt->fetchAll() as $v)
-			$this->gameobject_template[$v->entry] = $v;
+            $this->gameobject_template[$v->entry] = $v;
 		
 		$stmt = $conn->query("SELECT * FROM {$databaseName}.conditions");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
@@ -180,11 +206,15 @@ class DBStore
 		$stmt = $conn->query("SELECT * FROM {$databaseName}.points_of_interest");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
 		$this->points_of_interest = $stmt->fetchAll();
-			
+		
 		$stmt = $conn->query("SELECT * FROM {$databaseName}.smart_scripts");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
 		$this->smart_scripts = $stmt->fetchAll();
-			
+		
+		$stmt = $conn->query("SELECT * FROM {$databaseName}.reference_loot_template");
+		$stmt->setFetchMode(PDO::FETCH_OBJ);
+		$this->reference_loot_template = $stmt->fetchAll();
+		
 		$stmt = $conn->query("SELECT * FROM {$databaseName}.creature_text");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
 		$this->creature_text = $stmt->fetchAll();
@@ -200,87 +230,81 @@ class DBStore
 		$stmt = $conn->query("SELECT * FROM {$databaseName}.waypoint_scripts");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
 		foreach($stmt->fetchAll() as $v)
-			$this->waypoint_scripts[$v->id] = $v;
+            $this->waypoint_scripts[$v->id] = $v;
 	
 		$stmt = $conn->query("SELECT * FROM {$databaseName}.creature");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
 		$keyName = $loadmode == LoadMode::sunstrider ? 'spawnID' : 'guid';
 		foreach($stmt->fetchAll() as $v)
-			$this->creature[$v->$keyName] = $v;
+            $this->creature[$v->$keyName] = $v;
 		
 		$stmt = $conn->query("SELECT * FROM {$databaseName}.creature_addon");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
 		$keyName = $loadmode == LoadMode::sunstrider ? 'spawnID' : 'guid';
 		foreach($stmt->fetchAll() as $v)
-			$this->creature_addon[$v->$keyName] = $v;
+            $this->creature_addon[$v->$keyName] = $v;
 		
 		if($loadmode == LoadMode::sunstrider) {
-			$stmt = $conn->query("SELECT * FROM {$databaseName}.creature_entry");
-			$stmt->setFetchMode(PDO::FETCH_OBJ);
-			$this->creature_entry = $stmt->fetchAll();
-			
-			$stmt = $conn->query("SELECT * FROM {$databaseName}.trainer");
-			$stmt->setFetchMode(PDO::FETCH_OBJ);
-			foreach($stmt->fetchAll() as $v)
-				$this->trainer[$v->Id] = $v;
-			
-			$stmt = $conn->query("SELECT * FROM {$databaseName}.trainer_spell");
-			$stmt->setFetchMode(PDO::FETCH_OBJ);
-			$this->trainer_spell = $stmt->fetchAll();
-			
-			$stmt = $conn->query("SELECT * FROM {$databaseName}.spell_template");
-			$stmt->setFetchMode(PDO::FETCH_OBJ);
-			foreach($stmt->fetchAll() as $v)
-				$this->spell_template[$v->entry] = $v->spellName1;
-				
-			$stmt = $conn->query("SELECT * FROM {$databaseName}.waypoint_info");
-			$stmt->setFetchMode(PDO::FETCH_OBJ);
-			foreach($stmt->fetchAll() as $v)
-				$this->waypoint_info[$v->id] = $v;
+            $stmt = $conn->query("SELECT * FROM {$databaseName}.creature_entry");
+            $stmt->setFetchMode(PDO::FETCH_OBJ);
+            $this->creature_entry = $stmt->fetchAll();
+            
+            $stmt = $conn->query("SELECT * FROM {$databaseName}.trainer");
+            $stmt->setFetchMode(PDO::FETCH_OBJ);
+            foreach($stmt->fetchAll() as $v)
+                $this->trainer[$v->Id] = $v;
+            
+            $stmt = $conn->query("SELECT * FROM {$databaseName}.trainer_spell");
+            $stmt->setFetchMode(PDO::FETCH_OBJ);
+            $this->trainer_spell = $stmt->fetchAll();
+            
+            $stmt = $conn->query("SELECT * FROM {$databaseName}.spell_template");
+            $stmt->setFetchMode(PDO::FETCH_OBJ);
+            foreach($stmt->fetchAll() as $v)
+                $this->spell_template[$v->entry] = $v->spellName1;
+            
+            $stmt = $conn->query("SELECT * FROM {$databaseName}.waypoint_info");
+            $stmt->setFetchMode(PDO::FETCH_OBJ);
+            foreach($stmt->fetchAll() as $v)
+                $this->waypoint_info[$v->id] = $v;
 		}
 		
 		$stmt = $conn->query("SELECT * FROM {$databaseName}.gameobject");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
 		foreach($stmt->fetchAll() as $v)
-			$this->gameobject[$v->guid] = $v;
-			
+            $this->gameobject[$v->guid] = $v;
+		
 		$stmt = $conn->query("SELECT * FROM {$databaseName}.game_event_gameobject");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
 		foreach($stmt->fetchAll() as $v)
-			$this->game_event_gameobject[$v->guid] = $v;
-					
+            $this->game_event_gameobject[$v->guid] = $v;
+				
 		$stmt = $conn->query("SELECT * FROM {$databaseName}.game_event_creature");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
 		foreach($stmt->fetchAll() as $v)
-			$this->game_event_creature[$v->guid] = $v;
+            $this->game_event_creature[$v->guid] = $v;
 		
 		$stmt = $conn->query("SELECT * FROM {$databaseName}.creature_formations");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
 		foreach($stmt->fetchAll() as $v) {
-			$this->creature_formations[$v->memberGUID] = $v;
-			if(!$v->leaderGUID)
-				$this->creature_formations[$v->memberGUID]->leaderGUID = $v->memberGUID; //special handling for leader, it's always NULL in db for leader
+            $this->creature_formations[$v->memberGUID] = $v;
+            if(!$v->leaderGUID)
+                $this->creature_formations[$v->memberGUID]->leaderGUID = $v->memberGUID; //special handling for leader, it's always NULL in db for leader
 		}
 		
 		$index_name = $loadmode == LoadMode::sunstrider ? 'modelid' : 'DisplayID';
 		$stmt = $conn->query("SELECT * FROM {$databaseName}.creature_model_info");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
 		foreach($stmt->fetchAll() as $v)
-			$this->creature_model_info[$v->$index_name] = $v;
-			
+            $this->creature_model_info[$v->$index_name] = $v;
+		
 		$stmt = $conn->query("SELECT * FROM {$databaseName}.spawn_group");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
 		$this->spawn_group = $stmt->fetchAll();
-			
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.pool_creature");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		foreach($stmt->fetchAll() as $v)
-			$this->pool_creature[$v->guid] = $v;
 		
-		$stmt = $conn->query("SELECT * FROM {$databaseName}.pool_gameobject");
+		$stmt = $conn->query("SELECT * FROM {$databaseName}.pool_members");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		foreach($stmt->fetchAll() as $v)
-			$this->pool_gameobject[$v->guid] = $v;
+		$this->pool_members = $stmt->fetchAll();
 		
 		$stmt = $conn->query("SELECT * FROM {$databaseName}.pool_template");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
@@ -312,7 +336,6 @@ class DBConverter
 		$this->file = $file;
 		
 		// Connect
-		//$this->conn = new PDO("mysql:host=localhost;dbname=$sunWorld", $login, $password);
 		$this->conn = new PDO("mysql:host=localhost", $login, $password);
 		$this->conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
@@ -910,22 +933,150 @@ class DBConverter
 		}
 	}
 	
-	//import a dummy creature_template to make the FK happy
-	function ImportTLKCreatureTemplate(int $creature_id)
+    function ConvertFlagsExtraTCtoSun(int $tcFlags) : int
+    {
+        // first 8 flags are the same
+        $sunFlags = $tcFlags & 0xFF; 
+        
+        if ($tcFlags & TCCreatureFlagsExtra::CREATURE_FLAG_EXTRA_NO_TAUNT)
+            $sunFlags |= SunCreatureFlagsExtra::CREATURE_FLAG_EXTRA_NO_TAUNT;
+        if ($tcFlags & TCCreatureFlagsExtra::CREATURE_FLAG_EXTRA_GHOST_VISIBILITY)
+            $sunFlags |= SunCreatureFlagsExtra::CREATURE_FLAG_EXTRA_GHOST_VISIBILITY;
+        if ($tcFlags & TCCreatureFlagsExtra::CREATURE_FLAG_EXTRA_GUARD)
+            $sunFlags |= SunCreatureFlagsExtra::CREATURE_FLAG_EXTRA_GUARD;
+        if ($tcFlags & TCCreatureFlagsExtra::CREATURE_FLAG_EXTRA_NO_CRIT)
+            $sunFlags |= SunCreatureFlagsExtra::CREATURE_FLAG_EXTRA_NO_CRIT;
+        if ($tcFlags & TCCreatureFlagsExtra::CREATURE_FLAG_EXTRA_ALL_DIMINISH)
+            $sunFlags |= SunCreatureFlagsExtra::CREATURE_FLAG_EXTRA_ALL_DIMINISH;
+        if ($tcFlags & TCCreatureFlagsExtra::CREATURE_FLAG_EXTRA_NO_PLAYER_DAMAGE_REQ)
+            $sunFlags |= SunCreatureFlagsExtra::CREATURE_FLAG_EXTRA_NO_PLAYER_DAMAGE_REQ;
+        
+        //others have no equivalence as of writing
+        
+        return $sunFlags;
+    }
+    
+    function ImportCreatureTemplateAddon(int $creature_id)
+    {
+		$tc_results = FindAll($this->tcStore->creature_template_addon, "entry", $creature_id);
+		if (empty($tc_results))
+            return;
+        
+		$sun_results = FindAll($this->sunStore->creature_template_addon, "entry", $creature_id);
+		if (!empty($sun_results))
+			throw new ImportException("Trying to import already existing creature template addon {$creature_id}");
+
+        // copy TC one and make some arrangements
+		$creature_template_addon = $tc_results[0];
+        $creature_template_addon->patch = 5;
+        $standState = $creature_template_addon->bytes1 & 0xF;
+        $creature_template_addon->standState = $standState;
+        unset($creature_template_addon->bytes1);
+        unset($creature_template_addon->bytes2);
+        
+        if ($creature_template_addon->path_id)
+            $creature_template_addon->path_id = $this->ImportWaypoints(0, $creature_template_addon->path_id);
+        else
+            $creature_template_addon->path_id = null;
+        
+		array_push($this->sunStore->creature_template_addon, $creature_template_addon);
+		fwrite($this->file, WriteObject($this->conn, "creature_template_addon", $creature_template_addon)); 
+    }
+    
+    function ImportCreatureTemplateMovement(int $creature_id)
+    {
+		$tc_results = FindAll($this->tcStore->creature_template_movement, "CreatureId", $creature_id);
+		if (empty($tc_results))
+            return;
+        
+		$sun_results = FindAll($this->sunStore->creature_template_movement, "CreatureId", $creature_id);
+		if (!empty($sun_results))
+			throw new ImportException("Trying to import already existing creature template movement {$creature_id}");
+
+        // copy TC one and make some arrangements
+		$creature_template_movement = $tc_results[0];
+        unset($creature_template_movement->InteractionPauseTimer);
+        
+		array_push($this->sunStore->creature_template_movement, $creature_template_movement);
+		fwrite($this->file, WriteObject($this->conn, "creature_template_movement", $creature_template_movement)); 
+    }
+    
+    function ImportCreatureTemplateResistance(int $creature_id)
+    {
+        $tc_results = FindAll($this->tcStore->creature_template_resistance, "CreatureID", $creature_id);
+		if (empty($tc_results))
+            return;
+        
+		$sun_results = FindAll($this->sunStore->creature_template_resistance, "CreatureID", $creature_id);
+		if (!empty($sun_results))
+			throw new ImportException("Trying to import already existing creature template resistance {$creature_id}");
+
+        // copy TC one and make some arrangements
+		$creature_template_resistance = $tc_results[0];
+        $creature_template_resistance->patch = 5;
+        unset($creature_template_resistance->VerifiedBuild);
+        
+        
+		array_push($this->sunStore->creature_template_resistance, $creature_template_resistance);
+		fwrite($this->file, WriteObject($this->conn, "creature_template_resistance", $creature_template_resistance)); 
+    }
+    
+    function ImportCreatureTemplateSpell(int $creature_id)
+    {
+        $tc_results = FindAll($this->tcStore->creature_template_spell, "CreatureID", $creature_id);
+		if (empty($tc_results))
+            return;
+        
+		$sun_results = FindAll($this->sunStore->creature_template_spell, "CreatureID", $creature_id);
+		if (!empty($sun_results))
+			throw new ImportException("Trying to import already existing creature template spells {$creature_id}");
+
+        // copy TC one and make some arrangements
+		$creature_template_spell = $tc_results[0];
+        $creature_template_spell->patch = 5;
+        unset($creature_template_spell->VerifiedBuild);
+        
+        
+		array_push($this->sunStore->creature_template_spell, $creature_template_spell);
+		fwrite($this->file, WriteObject($this->conn, "creature_template_spell", $creature_template_spell)); 
+    }
+    
+	function ImportCreatureTemplate(int $creature_id, bool $force = true)
 	{
 		$tc_results = FindAll($this->tcStore->creature_template, "entry", $creature_id);
 		if (empty($tc_results))
 			throw new ImportException("Trying to import non existing TLK creature template {$creature_id}");
-			
+        
 		$sun_results = FindAll($this->sunStore->creature_template, "entry", $creature_id);
 		if (!empty($sun_results))
-			throw new ImportException("Trying to import already existing creature template {$creature_id}");
-			
-		$creature_template = new stdClass;
-		$creature_template->entry = $creature_id;
-		$creature_template->name = $tc_results[0]->name;
+        {
+            if ($force)
+            {
+                RemoveAny($this->tcStore->creature_template, "entry", $creature_id);
+            }
+            else
+                throw new ImportException("Trying to import already existing creature template {$creature_id}");
+        }
+
+        // copy TC one and make some arrangements
+		$creature_template = $tc_results[0];
 		$creature_template->patch = 5;
-		
+        unset($creature_template->import);
+        unset($creature_template->movementId);
+        unset($creature_template->RegenHealth);
+        unset($creature_template->VerifiedBuild);
+        
+        $creature_template->flags_extra = $this->ConvertFlagsExtraTCtoSun($creature_template->flags_extra);
+        $creature_template->lootid = null; //TODO 
+        $creature_template->pickpocketloot = null; //TODO 
+        $creature_template->skinloot = null; //TODO 
+        $creature_template->gossip_menu_id = null; //TODO 
+        
+        $this->ImportCreatureTemplateAddon($creature_id);
+        $this->ImportCreatureTemplateMovement($creature_id);
+        $this->ImportCreatureTemplateResistance($creature_id);
+        $this->ImportCreatureTemplateSpell($creature_id);
+        
 		array_push($this->sunStore->creature_template, $creature_template);
 		fwrite($this->file, WriteObject($this->conn, "creature_template", $creature_template)); 
 	}
@@ -960,9 +1111,9 @@ class DBConverter
 		
 		$sun_results = FindAll($this->sunStore->creature_template, "entry", $creature_id);
 		if(empty($sun_results)) {
-			LogWarning("Targeted creature entry {$creature_id} doesn't exists in our database, importing a dummy creature_template for it and setting this smart line to patch 5.");
+			LogWarning("Targeted creature entry {$creature_id} doesn't exists in our database, importing a creature_template for it and setting this smart line to patch 5.");
 			$patch = 5;
-			$this->ImportTLKCreatureTemplate($creature_id);
+			$this->ImportCreatureTemplate($creature_id);
 		}
 		echo "Importing referenced summon/target creature id {$creature_id}, "; //... continue this line later
 		foreach($sun_results as $sun_result) {
@@ -1934,36 +2085,6 @@ class DBConverter
 		}
 	}
 
-	function ImportCreatureTemplate($id)
-	{
-		$tc_results = FindAll($this->tcStore->creature_template, "entry", $id);
-		assert(empty($tc_results) == false);
-			
-		$sun_results = FindAll($this->sunStore->creature_template, "entry", $id);
-		if(!empty($sun_results)) {
-			foreach($sun_results as $sun_result) {
-				$sun_name = $sun_result->name;
-				$tc_name = $sun_result->name;
-				if($sun_name != $tc_name)
-				{
-					$msg = "Sun db already has creature {$id} ({$tc_name})... but under a different name ({$sun_name}). Is this a custom creature?";
-					throw new ImportException($msg);
-				}
-			}
-			return;
-		}
-		
-		$sun_creature_template = new stdClass;
-		$sun_creature_template->entry = $tc_creature->id;
-		$sun_creature_template->name = $this->tcStore->creature_template[$tc_creature->id]->name;
-
-		LogError("NYI");
-		throw ImportException("NYI");
-		
-		array_push($this->sunStore->creature_template, $sun_creature_template);
-		fwrite($this->file, WriteObject($this->conn, "creature_template", $sun_creature_template));
-	}
-	
 	function HasSunModelInTemplate($creature_id, $model_id)
 	{
 		//check if template for this creature has this modelid. Also check the modelids other gender.
