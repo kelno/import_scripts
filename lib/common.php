@@ -73,6 +73,7 @@ function LogWarning(string $msg)
 	fwrite($file, "-- WARNING {$msg}" . PHP_EOL);
 	++$warnings;
 }
+
 function LogNotice(string $msg)
 {
 	global $file;
@@ -80,6 +81,7 @@ function LogNotice(string $msg)
 	echo "NOTICE: {$msg}" . PHP_EOL;
 	fwrite($file, "-- NOTICE {$msg}" . PHP_EOL);
 }
+
 function LogDebug(string $msg)
 {
 	global $debug, $file;
@@ -943,7 +945,7 @@ class DBConverter
         $creature_template_addon->standState = $standState;
         unset($creature_template_addon->bytes1);
         unset($creature_template_addon->bytes2);
-        
+
         if ($creature_template_addon->path_id)
             $creature_template_addon->path_id = $this->ImportWaypoints(0, $creature_template_addon->path_id);
         else
@@ -952,18 +954,18 @@ class DBConverter
 		array_push($this->sunStore->creature_template_addon, $creature_template_addon);
 		fwrite($this->file, WriteObject($this->conn, "creature_template_addon", $creature_template_addon)); 
     }
-    
+
     function ImportCreatureTemplateMovement(int $creature_id)
     {
 		if (CheckAlreadyImported($creature_id))
 			return;
-        
+
         $this->LoadTable("creature_template_movement");
-        
+
 		$tc_results = FindAll($this->tcStore->creature_template_movement, "CreatureId", $creature_id);
 		if (empty($tc_results))
             return;
-        
+
 		$sun_results = FindAll($this->sunStore->creature_template_movement, "CreatureId", $creature_id);
 		if (!empty($sun_results))
 			throw new ImportException("Trying to import already existing creature template movement {$creature_id}");
@@ -975,12 +977,12 @@ class DBConverter
 		array_push($this->sunStore->creature_template_movement, $creature_template_movement);
 		fwrite($this->file, WriteObject($this->conn, "creature_template_movement", $creature_template_movement)); 
     }
-    
+
     function ImportCreatureTemplateResistance(int $creature_id)
     {
 		if (CheckAlreadyImported($creature_id))
 			return;
-        
+
         $this->LoadTable("creature_template_resistance");
         
         $tc_results = FindAll($this->tcStore->creature_template_resistance, "CreatureID", $creature_id);
@@ -995,7 +997,6 @@ class DBConverter
 		$creature_template_resistance = $tc_results[0];
         $creature_template_resistance->patch = 5;
         unset($creature_template_resistance->VerifiedBuild);
-        
         
 		array_push($this->sunStore->creature_template_resistance, $creature_template_resistance);
 		fwrite($this->file, WriteObject($this->conn, "creature_template_resistance", $creature_template_resistance)); 
@@ -1021,7 +1022,6 @@ class DBConverter
         $creature_template_spell->patch = 5;
         unset($creature_template_spell->VerifiedBuild);
         
-        
 		array_push($this->sunStore->creature_template_spell, $creature_template_spell);
 		fwrite($this->file, WriteObject($this->conn, "creature_template_spell", $creature_template_spell)); 
     }
@@ -1041,9 +1041,7 @@ class DBConverter
 		if (!empty($sun_results))
         {
             if ($force)
-            {
                 RemoveAny($this->tcStore->creature_template, "entry", $creature_id);
-            }
             else
                 throw new ImportException("Trying to import already existing creature template {$creature_id}");
         }

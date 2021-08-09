@@ -18,7 +18,7 @@ function WriteObjects(&$conn, string $tableName, array &$objectArray) : string
 	$sql = "INSERT INTO {$tableName} (";
 	foreach($keys as $k)
 		$sql .= "`{$k}`, ";
-		
+
 	$sql = substr_replace($sql, "", -2); //remove last space+comma
 	$sql .= ") VALUES ";
 	foreach($objectArray as $object) {
@@ -51,7 +51,7 @@ function CheckAlreadyImported(int $id) : bool
 	} else {
 		$imported[$callerName] = [ ];
 	}
-	
+
 	array_push($imported[$callerName], $id);
 	return false;
 }
@@ -61,17 +61,17 @@ function HasAny(array &$container, string $keyname, $value) : bool
 	foreach(array_keys($container) as $key)
 		if($container[$key]->$keyname == $value)
 			return true;
-		
+
 	return false;
 }
 
 function GetHighest(&$container, $keyname) : int
 {
 	$highest = 0;
-	
+
 	foreach(array_keys($container) as $key)
 		$highest = max($container[$key]->$keyname, $highest);
-	
+
 	return $highest;
 }
 
@@ -96,10 +96,9 @@ function FindAll(array &$container, string $keyname, $value) : array
 
 function RemoveAny(&$container, string $keyname, $value)
 {
-	foreach(array_keys($container) as $key) {
+	foreach(array_keys($container) as $key)
 		if($container[$key]->$keyname == $value)
 			unset($container[$key]);
-	}
 }
 
 abstract class Conditions

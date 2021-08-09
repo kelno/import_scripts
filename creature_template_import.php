@@ -39,4 +39,4 @@ fclose($file);
 
 $duration = microtime(true) - $start;
 $duration = number_format($duration, 4);
-echo PHP_EOL . "Finished in {$duration}s with {$warnings} warnings and {$errors} errors" . PHP_EOL;	
+echo PHP_EOL . "Finished in {$duration}s with {$warnings} warnings and {$errors} errors" . PHP_EOL;
