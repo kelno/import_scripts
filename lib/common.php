@@ -686,14 +686,13 @@ class DBConverter
 		$this->timelol("CM6");
 		return $sun_menu_id;
 	}
-		
+
 	function SetMenuId(int $entry, int $sun_menu_id, bool $set_gossip_flag)
 	{
 		$npcflag = $set_gossip_flag ? "npcflag = (npcflag | 1), " : "";
 		$sql = "UPDATE creature_template SET {$npcflag}gossip_menu_id = {$sun_menu_id} WHERE entry = {$entry};" . PHP_EOL;
 		fwrite($this->file, $sql);
 	}
-
 
 	function FindAllSmart(int $sun, int $entryorguid, int $source_type) : array
 	{
@@ -751,7 +750,7 @@ class DBConverter
 					break;
 			}
 		}
-		
+
 		$this->timelol("c");
 		
 		//Unset in store
@@ -838,9 +837,9 @@ class DBConverter
 			LogDebug("Summon group for npc {$npcEntry} group {$groupID} is already imported");
 			return;
 		}
-		
+
         $this->LoadTable("creature_summon_groups");
-        
+
 		// could be improved, currently we just port everything and ignore group
 		$results = FindAll($this->tcStore->creature_summon_groups, "summonerId", $npcEntry);
 		if (empty($results))
@@ -851,7 +850,7 @@ class DBConverter
 			LogDebug("Summon group for npc {$npcEntry} group {$groupID} is already existing and identical");
 			return;
 		}
-	
+
 		$sql = "DELETE FROM creature_summon_groups WHERE summonerId = {$npcEntry};" . PHP_EOL;
 		fwrite($this->file, $sql);
 		RemoveAny($this->sunStore->creature_summon_groups, "summonerId", $npcEntry);
@@ -877,34 +876,34 @@ class DBConverter
 			LogDebug("Smart Waypoints {$path_id} are already imported");
 			return;
 		}
-        
+
         $this->LoadTable("waypoints");
-		
+
 		$results = FindAll($this->tcStore->waypoints, "entry", $path_id);
 		if (empty($results)) 
 			throw new ImportException("Could not find TC waypoints {$path_id}");
-		
+
 		$sunResults = FindAll($this->sunStore->waypoints, "entry", $path_id);
 		if (!empty($sunResults)) {
 			if ($sunResults != $results) //does this work okay? This is supposed to compare keys + values, but we don't care about keys.
 				echo "TC and SUN table have different smart waypoints for path_id {$path_id}, overwritting with TC ones ". PHP_EOL;
-				
+
 			$sql = "DELETE FROM waypoints WHERE entry = {$path_id};" . PHP_EOL;
 			fwrite($this->file, $sql);
 			RemoveAny($this->sunStore->waypoints, "entry", $path_id);
 		}
-		
+
 		foreach($results as $tc_waypoint) {
 			array_push($this->sunStore->waypoints, $tc_waypoint);
 			fwrite($this->file, WriteObject($this->conn, "waypoints", $tc_waypoint)); 
 		}
 	}
-	
+
     function ConvertFlagsExtraTCtoSun(int $tcFlags) : int
     {
         // first 8 flags are the same
         $sunFlags = $tcFlags & 0xFF; 
-        
+
         if ($tcFlags & TCCreatureFlagsExtra::CREATURE_FLAG_EXTRA_NO_TAUNT)
             $sunFlags |= SunCreatureFlagsExtra::CREATURE_FLAG_EXTRA_NO_TAUNT;
         if ($tcFlags & TCCreatureFlagsExtra::CREATURE_FLAG_EXTRA_GHOST_VISIBILITY)
@@ -917,12 +916,12 @@ class DBConverter
             $sunFlags |= SunCreatureFlagsExtra::CREATURE_FLAG_EXTRA_ALL_DIMINISH;
         if ($tcFlags & TCCreatureFlagsExtra::CREATURE_FLAG_EXTRA_NO_PLAYER_DAMAGE_REQ)
             $sunFlags |= SunCreatureFlagsExtra::CREATURE_FLAG_EXTRA_NO_PLAYER_DAMAGE_REQ;
-        
+
         //others have no equivalence as of writing (23/07/2021)
-        
+
         return $sunFlags;
     }
-    
+
     function ImportCreatureTemplateAddon(int $creature_id)
     {
 		if (CheckAlreadyImported($creature_id))
@@ -1025,18 +1024,18 @@ class DBConverter
 		array_push($this->sunStore->creature_template_spell, $creature_template_spell);
 		fwrite($this->file, WriteObject($this->conn, "creature_template_spell", $creature_template_spell)); 
     }
-    
+
 	function ImportCreatureTemplate(int $creature_id, bool $force = true)
 	{
 		if (CheckAlreadyImported($creature_id))
 			return;
-        
+
         $this->LoadTable("creature_template");
-        
+
 		$tc_results = FindAll($this->tcStore->creature_template, "entry", $creature_id);
 		if (empty($tc_results))
 			throw new ImportException("Trying to import non existing TLK creature template {$creature_id}");
-        
+
 		$sun_results = FindAll($this->sunStore->creature_template, "entry", $creature_id);
 		if (!empty($sun_results))
         {
@@ -1053,18 +1052,18 @@ class DBConverter
         unset($creature_template->movementId);
         unset($creature_template->RegenHealth);
         unset($creature_template->VerifiedBuild);
-        
+
         $creature_template->flags_extra = $this->ConvertFlagsExtraTCtoSun($creature_template->flags_extra);
         $creature_template->lootid = null; //TODO 
         $creature_template->pickpocketloot = null; //TODO 
         $creature_template->skinloot = null; //TODO 
         $creature_template->gossip_menu_id = null; //TODO 
-        
+
         $this->ImportCreatureTemplateAddon($creature_id);
         $this->ImportCreatureTemplateMovement($creature_id);
         $this->ImportCreatureTemplateResistance($creature_id);
         $this->ImportCreatureTemplateSpell($creature_id);
-        
+
 		array_push($this->sunStore->creature_template, $creature_template);
 		fwrite($this->file, WriteObject($this->conn, "creature_template", $creature_template)); 
 	}
@@ -1073,14 +1072,14 @@ class DBConverter
 	{
 		if (CheckAlreadyImported($creature_id))
 			return;
-		
+
         $this->LoadTable("creature_template");
         $this->LoadTable("smart_scripts");
-        
+
 		$tc_results = FindAll($this->tcStore->creature_template, "entry", $creature_id);
 		if (empty($tc_results))
 			throw new ImportException("Has a reference on a non existing creature {$creature_id}");
-		
+
 		//Only use first result... TC always has only one entry per creature
 		$tc_creature_template = $tc_results[0];
 		if ($tc_creature_template->AIName != "SmartAI") {
@@ -1089,17 +1088,17 @@ class DBConverter
 			else 
 				return;
 		}
-		
+
 		$this->timelol("CIC1");
-		
+
 		if (CheckIdentical($this->sunStore->smart_scripts, $this->tcStore->smart_scripts, "entryorguid", $creature_id)) {
 			//echo "Already identical, skipping" . PHP_EOL;
 			LogDebug("SmartAI for creature {$creature_id} is already in db and identical.");
 			return;
 		}
-		
+
 		$this->timelol("CIC2");
-		
+
 		$sun_results = FindAll($this->sunStore->creature_template, "entry", $creature_id);
 		if (empty($sun_results)) {
 			LogWarning("Targeted creature entry {$creature_id} doesn't exists in our database, importing a creature_template for it and setting this smart line to patch 5.");
@@ -1122,7 +1121,7 @@ class DBConverter
 				}
 			}
 		}
-		
+
 		$this->CreateSmartAI($creature_id, SmartSourceType::creature, SmartSourceType::creature);
 		$this->timelol("CIC3");
 	}
@@ -1131,33 +1130,33 @@ class DBConverter
 	{
 		if (CheckAlreadyImported($gob_id))
 			return;
-		
+
         $this->LoadTable("gameobject_template");
-        
+
 		if (!array_key_exists($gob_id, $this->tcStore->gameobject_template))
 			throw new ImportException("Smart reference a non existing gameobject {$gob_id}");
-		
+
 		if ($this->tcStore->gameobject_template[$gob_id]->AIName != "SmartAI")
 			throw new ImportException("Smart reference a non Smart gameobject {$gob_id}");
-		
+
 		if (CheckIdentical($this->sunStore->smart_scripts, $this->tcStore->smart_scripts, "entryorguid", $gob_id)) {
 			//echo "Already identical, skipping" . PHP_EOL;
 			LogDebug("SmartAI for gob {$gob_id} is already in db and identical.");
 			return;
 		}
-		
+
 		$sun_results = FindAll($this->sunStore->gameobject_template, "entry", $gob_id);
 		if (empty($sun_results)) {
 			LogWarning("Targeted gob entry {$gob_id} doesn't exists in our database");
 			$patch = 5;
 			return;
 		}
-		
+
 		echo "Smart TC {$from_entry} targets gameobject id {$gob_id}, also importing it, "; //... continue this line later
-		
+
 		$sunAIName = $this->sunStore->gameobject_template[$creature_id]->AIName;
 		$sunScriptName = $this->sunStore->gameobject_template[$creature_id]->ScriptName;
-		
+
 		if ($sunAIName == "" && $sunScriptName == "")
 			echo "it currently has no script." . PHP_EOL;
 		else 
@@ -1171,7 +1170,7 @@ class DBConverter
 		global $debug;
 		if (!$debug)
 			return;
-		
+
 		static $start = null;
 		if ($start != null)
 		{
@@ -1187,13 +1186,13 @@ class DBConverter
 	function CheckImportCreature(int $spawnID)
 	{
         $this->LoadTable("creature");
-        
+
 		if (!array_key_exists($spawnID, $this->tcStore->creature))
 			throw new ImportException("Smart TC trying to target a non existing creature guid {$spawnID}... this is a tc db error. Ignoring.", false);
-			
+
 		if (array_key_exists($spawnID, $this->sunStore->creature))
 			return; //already present
-		
+
 		$creatureID = $this->tcStore->creature[$spawnID]->id;
 		$sun_results = FindAll($this->sunStore->creature_template, "entry", $creatureID);
 		if (empty($sun_results))
@@ -1204,7 +1203,7 @@ class DBConverter
 		LogWarning("/!\ Importing ALL spawns for creature id {$creatureID} ({$name}). (to avoid this, import the creature before rerunning this script)");
 		$this->CreateReplaceAllCreature($creatureID);
 	}
-	
+
 	function CheckImportGameObject(int $spawnID)
 	{
         $this->LoadTable("gameobject");
@@ -2214,6 +2213,7 @@ class DBConverter
 		$sun_creature->pool_id = 0;
 		if (IsTLKMap($sun_creature->map))
 			$patch_min = 5;
+        
 		$sun_creature->patch_min = $patch_min;
 		$sun_creature->patch_max = $patch_max;
 		
