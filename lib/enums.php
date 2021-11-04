@@ -1,5 +1,11 @@
 <?php
 
+abstract class MapSpawnType
+{
+	const creature = 0;
+	const gameobject = 1;
+}
+
 abstract class TCCreatureFlagsExtra {
     const CREATURE_FLAG_EXTRA_INSTANCE_BIND        = 0x00000001;       // creature kill bind instance with killer and killer's group
     const CREATURE_FLAG_EXTRA_CIVILIAN             = 0x00000002;       // not aggro (ignore faction/reputation hostility)

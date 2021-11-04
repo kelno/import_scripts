@@ -110,7 +110,9 @@ class DBStore
 	public $creature_template_spell = null; //key has NO MEANING
 	public $creature_text = null; //key has NO MEANING
 	public $game_event_creature = null; //key is spawnID
-	public $gameobject = null; //key is spawnID
+	public $gameobject = null; //key has NO MEANING
+	public $gameobject_addon = null; //key is spawnID
+	public $gameobject_entry = null; //key has NO MEANING
 	public $game_event_gameobject = null; //key is spawnID
 	public $gameobject_template = null;  //key is entry
 	public $gossip_menu = null; //key has NO MEANING
@@ -233,7 +235,9 @@ $loadTableInfos["creature_template_spell"] = new LoadTableInfo();
 $loadTableInfos["creature_text"] = new LoadTableInfo();
 $loadTableInfos["game_event_creature"] = new LoadTableInfo("guid", "guid");
 $loadTableInfos["game_event_gameobject"] = new LoadTableInfo("guid", "guid");
-$loadTableInfos["gameobject"] = new LoadTableInfo("spawnID", "guid");
+$loadTableInfos["gameobject"] = new LoadTableInfo();
+$loadTableInfos["gameobject_addon"] = new LoadTableInfo("spawnID", "guid");
+$loadTableInfos["gameobject_entry"] = new LoadTableInfo(null, null, false, true);
 $loadTableInfos["gameobject_template"] = new LoadTableInfo("entry", "entry");
 $loadTableInfos["gossip_menu"] = new LoadTableInfo();
 $loadTableInfos["gossip_menu_option"] = new LoadTableInfo();
@@ -959,7 +963,7 @@ class DBConverter
         
         if (FindFirst($this->sunStore->$tableName, "Entry", $tcLootId) !== null) {
             // Do we have an already existing loot at this id with same values?
-            if (CheckIdentical($this->sunStore->$tableName, $this->tcStore->$tableName, "Entry", $tcLootId)) {
+            if (CheckIdentical($this->sunStore->$tableName, $this->tcStore->$tableName, "Entry", $tcLootId, "SortLoot")) {
                 LogDebug("{$tableName} {$tcLootId}: found already identical loot in our DB at this ID, skipping");
                 // we assume referenced loot template are also the same if they have the same ids
                 return $tcLootId;
@@ -1189,15 +1193,15 @@ class DBConverter
         
         $this->LoadTable("smart_scripts");
 
-		if (CheckIdentical($this->sunStore->smart_scripts, $this->tcStore->smart_scripts, "entryorguid", $creature_id)) {
+		if (CheckIdentical($this->sunStore->smart_scripts, $this->tcStore->smart_scripts, "entryorguid", $creature_id, "SortSmartAI")) {
 			//echo "Already identical, skipping" . PHP_EOL;
 			LogDebug("SmartAI for creature {$creature_id} is already in db and identical.");
 			return;
 		}
         
-		$this->CreateSmartAI($creature_id, SmartSourceType::creature, SmartSourceType::creature, 0, false);
+		$this->CreateSmartAI(SmartSourceType::creature, $creature_id, SmartSourceType::creature, $creature_id, false);
     }
-    
+
     function ImportReferencedCreatureSmart(int $creature_id, int& $patch, bool $hasToBeSmart) 
 	{
 		if (CheckAlreadyImported($creature_id))
@@ -1220,7 +1224,7 @@ class DBConverter
 		$this->timelol("CIC", true);
 		$this->timelol("CIC");
 
-		if (CheckIdentical($this->sunStore->smart_scripts, $this->tcStore->smart_scripts, "entryorguid", $creature_id)) {
+		if (CheckIdentical($this->sunStore->smart_scripts, $this->tcStore->smart_scripts, "entryorguid", $creature_id, "SortSmartAI")) {
 			//echo "Already identical, skipping" . PHP_EOL;
 			LogDebug("SmartAI for creature {$creature_id} is already in db and identical.");
 			return;
@@ -1228,33 +1232,38 @@ class DBConverter
 
 		$this->timelol("CIC");
 
-		echo "Importing referenced summon/target creature id {$creature_id}, "; //... continue this line later
+		echo "Importing SmartAI for referenced summon/target creature id {$creature_id}, "; //... continue this line later
 		$sun_results = FindAll($this->sunStore->creature_template, "entry", $creature_id);
 		if (!empty($sun_results)) {
             foreach($sun_results as $sun_result) {
                 $sunAIName = $sun_result->AIName;
                 $sunScriptName = $sun_result->ScriptName;
-                
+
                 if ($sunAIName == "" && $sunScriptName == "")
-                    echo "it currently has no script." . PHP_EOL;
+                    echo "it currently has no script on sunstrider." . PHP_EOL;
                 else {
-                    if ($this->smartImportContagious || in_array($sunScriptName, $this->forceImport))
+                    if ($this->smartImportContagious || in_array($sunScriptName, $this->forceImport)) {
                         echo "it currently had AIName '{$sunAIName}' and ScriptName '{$sunScriptName}'." . PHP_EOL;
-                    else {
+                    } else {
                         echo PHP_EOL;
-                        throw new ImportException("This would replace a creature which already has a script ({$sunAIName}/{$sunScriptName}), no import.", false);
+						if (!CheckIdentical($this->sunStore->smart_scripts, $this->tcStore->smart_scripts, "entryorguid", $creature_id, "SortSmartAI"))
+                        	throw new ImportException("This would replace a creature which already has a script ({$sunAIName}/{$sunScriptName}), no import.", false);
                     }
                 }
             }
 		}
         else
-            echo "it currently does not exists in sunstrider DB." . PHP_EOL;
+		{
+            echo "the creature currently does not exists in sunstrider DB. Importing it now" . PHP_EOL;
+			$this->ImportCreatureTemplate($creature_id);
+			return; // smart will be imported already
+		}
 
-		$this->CreateSmartAI($creature_id, SmartSourceType::creature, SmartSourceType::creature);
+		$this->CreateSmartAI(SmartSourceType::creature, $creature_id, SmartSourceType::creature);
 		$this->timelol("CIC");
 	}
 
-	function CheckImportGameObjectSmart(int $gob_id, int& $patch, bool $hasToBeSmart)
+	function ImportReferencedGameObjectSmart(int $gob_id, int& $patch, bool $hasToBeSmart)
 	{
 		if (CheckAlreadyImported($gob_id))
 			return;
@@ -1267,7 +1276,7 @@ class DBConverter
 		if ($this->tcStore->gameobject_template[$gob_id]->AIName != "SmartAI")
 			throw new ImportException("Smart reference a non Smart gameobject {$gob_id}");
 
-		if (CheckIdentical($this->sunStore->smart_scripts, $this->tcStore->smart_scripts, "entryorguid", $gob_id)) {
+		if (CheckIdentical($this->sunStore->smart_scripts, $this->tcStore->smart_scripts, "entryorguid", $gob_id, "SortSmartAI")) {
 			//echo "Already identical, skipping" . PHP_EOL;
 			LogDebug("SmartAI for gob {$gob_id} is already in db and identical.");
 			return;
@@ -1290,7 +1299,7 @@ class DBConverter
 		else 
 			echo "It currently had AIName '{$sunAIName}' and ScriptName '{$sunScriptName}." . PHP_EOL;
 
-		$this->CreateSmartAI($gob_id, SmartSourceType::gameobject, SmartSourceType::gameobject);
+		$this->CreateSmartAI(SmartSourceType::gameobject, $gob_id, SmartSourceType::gameobject);
 	}
 
 	function timelol($id, bool $reset = false, int $limit = 1)
@@ -1326,15 +1335,9 @@ class DBConverter
 		if (array_key_exists($spawnID, $this->sunStore->creature))
 			return; //already present
 
-		$creatureID = $this->tcStore->creature[$spawnID]->id;
-		$sun_results = FindAll($this->sunStore->creature_template, "entry", $creatureID);
-		if (empty($sun_results))
-			throw new ImportException("Smart TC trying to target a creature spawnID {$spawnID} (id: {$creatureID}) existing only on TC AND with an entry not existing on TBC. Ignoring.", false);
-		
-		$name = $sun_results[0]->name;
-		LogWarning("Smart TC trying to target a creature spawnID {$spawnID} (id: {$creatureID}) existing only on TC");
-		LogWarning("/!\ Importing ALL spawns for creature id {$creatureID} ({$name}). (to avoid this, import the creature before rerunning this script)");
-		$this->CreateReplaceAllCreature($creatureID);
+		LogWarning("Trying to use creature spawnID {$spawnID} existing only on TC, importing it now.");
+		$this->ImportTCCreature($spawnID, 5, 10);
+		$this->HandleFormations();
 	}
 
 	function CheckImportGameObject(int $spawnID)
@@ -1343,27 +1346,23 @@ class DBConverter
         $this->LoadTable("gameobject_template");
         
 		if (!array_key_exists($spawnID, $this->tcStore->gameobject))
-			throw new ImportException("Smart TC trying to target a non existing creature guid {$spawnID} on their own db... this is a tc db error. Ignoring.");
+			throw new ImportException("Smart TC trying to target a non existing gob guid {$spawnID} on their own db... this is a tc db error. Ignoring.");
 
 		if (array_key_exists($spawnID, $this->sunStore->gameobject))
 			return; //already present
 		
-		//else import!
-		$goID = $this->tcStore->gameobject[$spawnID]->id;
-		$sun_gob = FindFirst($this->sunStore->gameobject_template, "entry", $goID);
-		if ($sun_gob === null)
-			throw new ImportException("Smart TC trying to target a gameobject spawnID {$spawnID} (id: {$goID}) existing only on TC AND with an entry not existing on TBC. Ignoring.");
-		
-		$name = $sun_gob->name;
-		
-		throw new ImportException("NYI");
+		LogWarning("Trying to use target a gob spawnID {$spawnID} existing only on TC, importing it now.");
+		$this->ImportTCGameObject($spawnID, 5, 10);
 	}
 
-	// return creature id for this target (import if missing)
-	function GetTargetCreatureId(&$sun_smart_entry, int $creature_id, int& $patch) : int
+	function ImportSmartForTarget(&$sun_smart_entry, int $original_type, int $original_entry, int& $patch) : array
 	{
-        $this->LoadTable("creature");
+		$this->LoadTable("creature");
+		$this->LoadTable("gameobject");
         
+		$creature_id = 0;
+		$gameobject_id = 0;
+
 		switch($sun_smart_entry->target_type)
 		{
 			case SmartTarget::NONE:
@@ -1373,7 +1372,7 @@ class DBConverter
 			case SmartTarget::CLOSEST_CREATURE:
 			case SmartTarget::CREATURE_RANGE:
 				if ($sun_smart_entry->target_param1)
-					$creature_id = $sun_smart_entry->target_param1;
+					$creature_id = intval($sun_smart_entry->target_param1);
 				else if ($sun_smart_entry->target_type != SmartTarget::CREATURE_RANGE)
 					throw new ImportException("Target {$sun_smart_entry->target_type} of smart {$sun_smart_entry->entryorguid} id {$sun_smart_entry->id} has no target entry. Wut?");
 				break;
@@ -1399,11 +1398,7 @@ class DBConverter
 			case SmartTarget::HOSTILE_LAST_AGGRO:
 			case SmartTarget::HOSTILE_RANDOM:
 			case SmartTarget::HOSTILE_RANDOM_NOT_TOP:
-			case SmartTarget::GAMEOBJECT_RANGE:
-			case SmartTarget::GAMEOBJECT_GUID:
-			case SmartTarget::GAMEOBJECT_DISTANCE:
 			case SmartTarget::INVOKER_PARTY:
-			case SmartTarget::CLOSEST_GAMEOBJECT:
 			case SmartTarget::ACTION_INVOKER_VEHICLE:
 			case SmartTarget::THREAT_LIST:
 			case SmartTarget::LOOT_RECIPIENTS:
@@ -1415,7 +1410,24 @@ class DBConverter
 			case SmartTarget::ACTION_INVOKER:
 			case SmartTarget::STORED:
 			case SmartTarget::OWNER_OR_SUMMONER:
-				return 0;
+				break;
+			case SmartTarget::GAMEOBJECT_RANGE:
+			case SmartTarget::GAMEOBJECT_DISTANCE:
+			case SmartTarget::CLOSEST_GAMEOBJECT:
+				$gameobject_id = $sun_smart_entry->target_param1;
+				break;
+			case SmartTarget::GAMEOBJECT_GUID:
+				$spawnID = $sun_smart_entry->target_param1;
+				if (!array_key_exists($spawnID, $this->tcStore->gameobject))
+					throw new ImportException("SCould not find TC gameobject with spawnID {$spawnID} for target GAMEOBJECT_GUID. This is a TC error.");
+
+				$gameobject_id = $this->tcStore->gameobject[$guid].id;
+				try {
+					$this->CheckImportGameObject($spawnID);
+				} catch (ImportException $e) {
+					throw new ImportException("importing gameobject spawnID {$spawnID} with error: {$e->getMessage()}", $e->_error);
+				}
+				break;
 			default:
 				throw new ImportException("Target {$sun_smart_entry->target_type} NYI for Smart TC {$sun_smart_entry->entryorguid} {$sun_smart_entry->id}");
 		}
@@ -1427,103 +1439,30 @@ class DBConverter
 			} catch (ImportException $e) {
 				throw new ImportException("importing creature smart {$creature_id} with error: {$e->getMessage()}", $e->_error);
 			}
+			return array(SmartSourceType::creature, $creature_id);
 		}
-
-		return $creature_id;
-	}
-
-	// return gob id for this target (import if missing)
-	function GetTargetGameObjectId($sun_smart_entry, int $gob_id, int& $patch) : int
-	{
-        $this->LoadTable("gameobject");
-        
-		switch($sun_smart_entry->target_type) {
-			case SmartTarget::NONE:
-			case SmartTarget::SELF:
-				break;
-			case SmartTarget::CREATURE_DISTANCE:
-			case SmartTarget::CLOSEST_CREATURE:
-			case SmartTarget::CREATURE_RANGE:
-			case SmartTarget::CREATURE_GUID:
-			case SmartTarget::VICTIM:
-			case SmartTarget::CLOSEST_PLAYER:
-			case SmartTarget::PLAYER_DISTANCE:
-			case SmartTarget::PLAYER_RANGE:
-			case SmartTarget::HOSTILE_SECOND_AGGRO:
-			case SmartTarget::HOSTILE_LAST_AGGRO:
-			case SmartTarget::HOSTILE_RANDOM:
-			case SmartTarget::HOSTILE_RANDOM_NOT_TOP:
-			case SmartTarget::INVOKER_PARTY:
-			case SmartTarget::ACTION_INVOKER_VEHICLE:
-			case SmartTarget::THREAT_LIST:
-			case SmartTarget::LOOT_RECIPIENTS:
-			case SmartTarget::FARTHEST:
-			case SmartTarget::VEHICLE_ACCESSORY:
-			case SmartTarget::CLOSEST_ENEMY:
-			case SmartTarget::CLOSEST_FRIENDLY:
-			case SmartTarget::POSITION:
-			case SmartTarget::ACTION_INVOKER:
-			case SmartTarget::STORED:
-			case SmartTarget::OWNER_OR_SUMMONER:
-			case SmartTarget::CREATURE_GUID:
-				return 0;
-			case SmartTarget::GAMEOBJECT_RANGE:
-			case SmartTarget::GAMEOBJECT_DISTANCE:
-			case SmartTarget::CLOSEST_GAMEOBJECT:
-				$gob_id = $sun_smart_entry->target_param1;
-				break;
-			case SmartTarget::GAMEOBJECT_GUID:
-				$spawnID = $sun_smart_entry->target_param1;
-				if (!array_key_exists($spawnID, $this->tcStore->gameobject))
-					throw new ImportException("SCould not find TC gameobject with spawnID {$spawnID} for target GAMEOBJECT_GUID. This is a TC error.");
-
-				$gob_id = $this->tcStore->gameobject[$guid].id;
-				try {
-					$this->CheckImportGameObject($spawnID);
-				} catch (ImportException $e) {
-					throw new ImportException("importing gameobject spawnID {$spawnID} with error: {$e->getMessage()}", $e->_error);
-				}
-				break;
-			default:
-				throw new ImportException("Target {$sun_smart_entry->target_type} NYI for Smart TC {$sun_smart_entry->entryorguid} {$sun_smart_entry->id}");
-		}
-		
-		if ($gob_id)
+		else if ($gameobject_id)
 		{
 			try {
-				$this->CheckImportGameObjectSmart($gob_id, $patch, false);
+				$this->ImportReferencedGameObjectSmart($gob_id, $patch, false);
 			} catch (ImportException $e) {
 				throw new ImportException("importing gob smart {$gob_id} with error: {$e->getMessage()}", $e->_error);
 			}
+			return array(SmartSourceType::gameobject, $gameobject_id);
 		}
-
-		return $gob_id;
-	}
-	
-	// return creature/gob id for this target (import if missing)
-	function GetTargetId($sun_smart_entry, int $original_type, int $original_entry, int& $patch)
-	{
-		switch($original_type)
-		{
-			case SmartSourceType::creature:
-				return $this->GetTargetCreatureId($sun_smart_entry, $original_entry, $patch);
-				break;
-			case SmartSourceType::gameobject:
-				return $this->GetTargetGameObjectId($sun_smart_entry, $original_entry, $patch);
-				break;
-			default:
-				throw new ImportException("GetTargetId: NYI type {$original_type}");
-		}
+		else
+			return array($original_type, $original_entry);
 	}
 
-	function ImportSmartActionList(int $source_type, int $action_list_entry, int $original_type, int $original_entry, $sun_smart_entry, int& $patch)
+	function ImportSmartActionList(int $action_list_entry, int $original_type, int $original_entry, &$sun_smart_entry, int& $patch)
 	{
-		$original_entry = $this->GetTargetId($sun_smart_entry, $original_type, $original_entry, $patch);
-		$this->CreateSmartAI($action_list_entry, SmartSourceType::timedactionlist, $original_type, $original_entry); 	
+		// try to get the creature/gob the action list will be run on
+		list($target_type, $target_entry) = $this->ImportSmartForTarget($sun_smart_entry, $original_type, $original_entry, $patch);
+		$this->CreateSmartAI(SmartSourceType::timedactionlist, $action_list_entry, $target_type, $target_entry); 	
 	}
 	
 	// original_entry: if we're in an action list, the creature/gob it was called from
-	function CreateSmartAI(int $tc_entry, int $source_type, int $original_type, int $original_entry = 0, bool $updateScriptName = true)
+	function CreateSmartAI(int $source_type, int $tc_entry, int $original_type, int $original_entry = 0, bool $updateScriptName = true)
 	{
 		if (CheckAlreadyImported($tc_entry + $source_type << 28)) { //max entry is 30.501.000 (smaller number with 28 bits shift is 268.435.456)
 			LogDebug("SmartAI {$tc_entry} {$source_type} is already imported");
@@ -1596,7 +1535,7 @@ class DBConverter
 							$this->CreateSmartWaypoints($path_id);
 						} catch (ImportException $e) {
 							LogException($e, "Failed to create waypoints for entry {$original_entry} {$tc_entry} id {$sun_smart_entry->id}: {$e->getMessage()}");
-							continue;
+							continue 2;
 						}
 					}
 					break;
@@ -1606,7 +1545,7 @@ class DBConverter
 							$sun_menu_id = $this->CreateMenu($tc_menu_id);
 						} catch (ImportException $e) {
 							LogException($e, "Failed to create menu for entry {$original_entry} {$tc_entry} id {$sun_smart_entry->id}: {$e->getMessage()}");
-							continue;
+							continue 2;
 						}
 						$sun_smart_entry->event_param1 = $sun_menu_id;
 					}
@@ -1626,26 +1565,28 @@ class DBConverter
 					
 					$creature_id = $original_entry ? $original_entry : $tc_entry;
 					$useTalkTarget = $sun_smart_entry->action_type == SmartAction::TALK && $sun_smart_entry->action_param3;
-					if (!$useTalkTarget) //the arguments makes it so we talk with specified target (does not make target talk)
+                    // by default, this action will make it so the target is the one talking. if useTalkTarget is set, we are the one talking and we don't need to worry about it. But if the target is another creature, we should try to import it.
+					if (!$useTalkTarget)
 					{
 						switch($sun_smart_entry->target_type)
 						{
+						case SmartTarget::SELF:
 						case SmartTarget::CLOSEST_PLAYER:
 						case SmartTarget::PLAYER_DISTANCE:
 						case SmartTarget::PLAYER_RANGE:
-							break; //in this case, WE talk
+							break; // myself or a player... nothing to look for.
 						case SmartTarget::CLOSEST_ENEMY:
 						case SmartTarget::CLOSEST_FRIENDLY:
 						case SmartTarget::POSITION:
 							//doesnt make any sense to use here... this is very probably a TC error
-							LogWarning("Entry {$original_entry} {$tc_entry} id {$sun_smart_entry->id} uses target {$sun_smart_entry->target_type} without useTalkTarget... Makes no sense, let's enable useTalkTarget instead.");
+							LogWarning("Entry {$original_entry} {$tc_entry} id {$sun_smart_entry->id} uses target {$sun_smart_entry->target_type} without useTalkTarget... Makes no sense.");
 							break; //then import normally like in the useTalkTarget case
 						default:
-							try  {
-								$creature_id = $this->GetTargetCreatureId($sun_smart_entry, $creature_id, $sun_smart_entry->patch_min);
+							try {
+								list($dummy, $creature_id) = $this->ImportSmartForTarget($sun_smart_entry, SmartSourceType::creature, $creature_id, $sun_smart_entry->patch_min);
 							} catch (ImportException $e) {
-								LogException($e, "Failed to import target {$sun_smart_entry->target_type} for entry {$original_entry} {$tc_entry} id {$sun_smart_entry->id}: {$e->getMessage()}");
-								continue;
+								LogException($e, "Failed to import smart target type {$sun_smart_entry->target_type} for original entry {$original_entry} current entry {$tc_entry} id {$sun_smart_entry->id}: {$e->getMessage()}");
+                                continue 3;
 							}
 							break;
 						}
@@ -1657,7 +1598,8 @@ class DBConverter
 							$this->CreateCreatureText($creature_id);
 						} catch (ImportException $e) {
 							LogException($e, "Failed to import text talk with target {$sun_smart_entry->target_type} for entry {$original_entry} {$tc_entry} id {$sun_smart_entry->id}: {$e->getMessage()}");
-							continue;
+                            assert(false);
+							continue 2;
 						}
 					}
 					break;
@@ -1670,10 +1612,10 @@ class DBConverter
 					break;
 				case SmartAction::CALL_TIMED_ACTIONLIST:
 					try {
-						$this->ImportSmartActionList($source_type, $sun_smart_entry->action_param1, $original_type, $original_entry, $sun_smart_entry, $sun_smart_entry->patch_min);
+						$this->ImportSmartActionList($sun_smart_entry->action_param1, $original_type, $original_entry, $sun_smart_entry, $sun_smart_entry->patch_min);
 					} catch (ImportException $e) {
 						LogException($e, "Failed to import actionlist for entry {$original_entry} {$tc_entry} id {$sun_smart_entry->id}: {$e->getMessage()}");
-						continue;
+						continue 2;
 					}
 					break;
 				case SmartAction::CALL_RANDOM_TIMED_ACTIONLIST:			
@@ -1683,10 +1625,10 @@ class DBConverter
 						$fieldName = "action_param" . $i;
 						if ($action_list = $sun_smart_entry->$fieldName) {
 							try {
-								$this->ImportSmartActionList($source_type, $action_list , $original_type, $original_entry, $sun_smart_entry, $sun_smart_entry->patch_min);
+								$this->ImportSmartActionList($action_list , $original_type, $original_entry, $sun_smart_entry, $sun_smart_entry->patch_min);
 							} catch (ImportException $e) {
 								LogException($e, "Failed to import actionlist for entry {$original_entry} {$tc_entry} id {$sun_smart_entry->id}: {$e->getMessage()}");
-								continue;
+								continue 3;
 							}
 						}
 					}
@@ -1697,7 +1639,7 @@ class DBConverter
 					$max = $sun_smart_entry->action_param2;
 					for($i = $min; $i <= $max; $i++) {
 						try {
-							$this->ImportSmartActionList($source_type, $i, $original_type, $original_entry, $sun_smart_entry, $sun_smart_entry->patch_min);
+							$this->ImportSmartActionList($i, $original_type, $original_entry, $sun_smart_entry, $sun_smart_entry->patch_min);
 						} catch (ImportException $e) {
 							LogException($e, "Failed to import actionlist for entry {$original_entry} {$tc_entry} id {$sun_smart_entry->id}: {$e->getMessage()}");
 							continue;
@@ -1709,7 +1651,7 @@ class DBConverter
 						$sun_menu_id = $this->CreateMenu($sun_smart_entry->action_param1); 
 					} catch (ImportException $e) {
 						LogException($e, "Failed to create menu for entry {$original_entry} {$tc_entry} id {$sun_smart_entry->id}: {$e->getMessage()}");
-						continue;
+						continue 2;
 					}
 					$sun_smart_entry->action_param1 = $sun_menu_id;
 					break;
@@ -1719,7 +1661,7 @@ class DBConverter
 						$this->CreateSmartWaypoints($path_id);
 					} catch (ImportException $e) {
 						LogException($e, "Failed to create waypoints for entry {$original_entry} {$tc_entry} and id {$sun_smart_entry->id}: {$e->getMessage()}");
-						continue;
+						continue 2;
 					}
 					break;
 				case SmartAction::SUMMON_CREATURE:
@@ -1729,7 +1671,7 @@ class DBConverter
 						$this->ImportReferencedCreatureSmart($summonID, $sun_smart_entry->patch_min, false);
 					} catch (ImportException $e) {
 						LogException($e, "Smart TC {$tc_entry} {$sun_smart_entry->id}: Failed to import smart for summoned creature: {$e->getMessage()}");
-						continue;
+						continue 2;
 					}
 					break;
 				case SmartAction::GAME_EVENT_STOP:
@@ -1744,18 +1686,18 @@ class DBConverter
 					$spawnType = $sun_smart_entry->action_param1;
 					$spawnID = $sun_smart_entry->action_param2;
 					try {
-						if ($spawnType == MapSpawnType::creature) 
+						if ($spawnType == MapSpawnType::creature)
 							$this->CheckImportCreature($spawnID);
 						else if ($spawnType == MapSpawnType::gameobject)
 							$this->CheckImportGameObject($spawnID);
 						else
 						{
 							LogError("Smart TC {$tc_entry} {$sun_smart_entry->id}: NYI spawnType {$spawnType}");
-							continue;
+							continue 2;
 						}
 					} catch (ImportException $e) {
 						LogException($e, "Smart TC {$tc_entry} {$sun_smart_entry->id}: Failed to import smart for summoned creature: {$e->getMessage()}");
-						continue;
+						continue 2;
 					}
 					break;
 				case SmartAction::SUMMON_CREATURE_GROUP:
@@ -1764,7 +1706,7 @@ class DBConverter
 				case SmartAction::SET_INST_DATA:
 				case SmartAction::SET_INST_DATA64:
 					//ignore those
-					continue;
+					continue 2;
 				case SmartAction::SET_DATA:
 					//special handling below
 					break;
@@ -1786,7 +1728,7 @@ class DBConverter
 							$this->CheckImportCreature($spawnID);
 						} catch (ImportException $e) {
 							LogWarning("Smart TC {$tc_entry} {$sun_smart_entry->id}: Failed to import smart for targeted creature spawnID {$spawnID}: {$e->getMessage()}");
-							continue;
+							continue 2;
 						}
 						break;
 					case SmartTarget::GAMEOBJECT_GUID:
@@ -1796,7 +1738,7 @@ class DBConverter
 							$this->CheckImportGameObject($spawnID);
 						} catch (ImportException $e) {
 							LogWarning("Smart TC {$tc_entry} {$sun_smart_entry->id}: Failed to import smart for targeted gameobject spawnID {$spawnID}: {$e->getMessage()}");
-							continue;
+							continue 2;
 						}
 					default:
 						break;
@@ -1807,7 +1749,7 @@ class DBConverter
 			 
 			if ($sun_smart_entry->action_type == SmartAction::SET_DATA) {
 				try {
-					$this->GetTargetId($sun_smart_entry, $original_type, $original_entry, $sun_smart_entry->patch_min);  //will import creature/gob if missing
+					$this->ImportSmartForTarget($sun_smart_entry, $original_type, $original_entry, $sun_smart_entry->patch_min);  //will import creature/gob if missing
 				} catch (ImportException $e) {
 					LogException($e, "Smart TC {$tc_entry} {$sun_smart_entry->id}: Failed to import smart for targeted creature/gob spawnID: {$e->getMessage()}");
 					continue;
@@ -2134,10 +2076,10 @@ class DBConverter
 		$results = FindAll($this->tcStore->spawn_group, "spawnId", $guid);
 		foreach($results as &$result) {
 			if ($creature) {
-				if ($result->spawnType != 0) //creature type
+				if ($result->spawnType != MapSpawnType::creature) //creature type
 					continue;
 			} else {
-				if ($result->spawnType != 1) //gob type
+				if ($result->spawnType != MapSpawnType::gameobject) //gob type
 					continue;
 			}
 				
@@ -2254,9 +2196,9 @@ class DBConverter
 	}
 
 	//don't forget to call HandleFormations after this
-	function ImportTCCreature(int $guid, int $patch_min = 0, int $patch_max = 10)
+	function ImportTCCreature(int $spawnId, int $patch_min = 0, int $patch_max = 10)
 	{
-		if (CheckAlreadyImported($guid))
+		if (CheckAlreadyImported($spawnId))
 			return;
 		
         $this->LoadTable("creature");
@@ -2264,13 +2206,13 @@ class DBConverter
         $this->LoadTable("creature_entry");
         $this->LoadTable("game_event_creature");
         
-		if (array_key_exists($guid, $this->sunStore->creature)) 
+		if (array_key_exists($spawnId, $this->sunStore->creature)) 
 			return;
 		
-		$tc_creature = &$this->tcStore->creature[$guid];
+		$tc_creature = &$this->tcStore->creature[$spawnId];
 		$tc_creature_addon = null;
-		if (array_key_exists($guid, $this->tcStore->creature_addon)) {
-			$tc_creature_addon = &$this->tcStore->creature_addon[$guid];
+		if (array_key_exists($spawnId, $this->tcStore->creature_addon)) {
+			$tc_creature_addon = &$this->tcStore->creature_addon[$spawnId];
 		}
 		
 		if (IsTLKCreature($tc_creature->id))
@@ -2279,7 +2221,7 @@ class DBConverter
 		
 		//create creature
 		$sun_creature = new stdClass;
-		$sun_creature->spawnID = $guid;
+		$sun_creature->spawnID = $spawnId;
 		$sun_creature->map = $tc_creature->map;
 		$sun_creature->spawnMask = $tc_creature->spawnMask;
         // for now just let the core filter out the bad models. creature_model_info needs to be filled with all the TC values already
@@ -2304,12 +2246,12 @@ class DBConverter
 		$sun_creature->patch_min = $patch_min;
 		$sun_creature->patch_max = $patch_max;
 		
-		$this->sunStore->creature[$guid] = $sun_creature;
+		$this->sunStore->creature[$spawnId] = $sun_creature;
 		fwrite($this->file, WriteObject($this->conn, "creature", $sun_creature));
 		
 		//create creature_entry
 		$sun_creature_entry = new stdClass; //anonymous object
-		$sun_creature_entry->spawnID = $guid;
+		$sun_creature_entry->spawnID = $spawnId;
 		$sun_creature_entry->entry = $tc_creature->id;
 		
 		array_push($this->sunStore->creature_entry, $sun_creature_entry);
@@ -2319,13 +2261,13 @@ class DBConverter
 		if ($tc_creature_addon) {
 			$path_id = $tc_creature_addon->path_id;
 			if ($path_id) 
-				$path_id = $this->ImportWaypoints($guid, $path_id, false); 
+				$path_id = $this->ImportWaypoints($spawnId, $path_id, false); 
 
             if (!$path_id)
 				$path_id = null;
                 
 			$sun_creature_addon = new stdClass;
-			$sun_creature_addon->spawnID = $guid;
+			$sun_creature_addon->spawnID = $spawnId;
 			$sun_creature_addon->path_id = $path_id;
 			$sun_creature_addon->mount = $tc_creature_addon->mount;
             $sun_creature_addon->standState = $tc_creature_addon->bytes1 & 0xFF; // first 8 bytes of bytes 1 are stand state
@@ -2334,23 +2276,23 @@ class DBConverter
 			$sun_creature_addon->auras = $tc_creature_addon->auras ? $tc_creature_addon->auras : 'NULL';
 			//could be improved here: check auras with spell_template, some are TLK only
 			
-			$this->sunStore->creature_addon[$guid] = $sun_creature_addon;
+			$this->sunStore->creature_addon[$spawnId] = $sun_creature_addon;
 			fwrite($this->file, WriteObject($this->conn, "creature_addon", $sun_creature_addon));
 		}
 		
 		//game event creature
-		if (array_key_exists($guid, $this->tcStore->game_event_creature)) {
+		if (array_key_exists($spawnId, $this->tcStore->game_event_creature)) {
 			$sun_gec = new stdClass;
             //TODO: tc event might not exists... but if it exists we assume it's the right one, we made some id sync for that before
-			$sun_gec->event = $this->tcStore->game_event_creature[$guid]->eventEntry;
-			$sun_gec->guid = $guid;
-			$this->sunStore->game_event_creature[$guid] = $sun_gec;
+			$sun_gec->event = $this->tcStore->game_event_creature[$spawnId]->eventEntry;
+			$sun_gec->spawnId = $spawnId;
+			$this->sunStore->game_event_creature[$spawnId] = $sun_gec;
 			fwrite($this->file, WriteObject($this->conn, "game_event_creature", $sun_gec));
 		}
 		
-		$this->ImportSpawnGroup($guid, true);
-		$this->ImportFormation($guid);
-		$this->ImportPool($guid, true);
+		$this->ImportSpawnGroup($spawnId, true);
+		$this->ImportFormation($spawnId);
+		$this->ImportPool($spawnId, true);
 	}
 
 	function CreateReplaceAllCreature(int $creature_id, int $patch_min = 0, int $patch_max = 10)
@@ -2464,31 +2406,39 @@ class DBConverter
 		fwrite($this->file, WriteObject($this->conn, "gameobject_template", $sun_gameobject_template));
 	}
 	
-	function ImportTCGameObject(int $guid, int $patch_min = 0, int $patch_max = 10)
+	function ImportTCGameObject(int $spawnID, int $patch_min = 0, int $patch_max = 10)
 	{
-		if (CheckAlreadyImported($guid))
+		if (CheckAlreadyImported($spawnID))
 			return;
 		
         $this->LoadTable("gameobject");
+        $this->LoadTable("gameobject_addon");
+        $this->LoadTable("gameobject_entry");
         $this->LoadTable("gameobject_template");
         $this->LoadTable("game_event_gameobject");
         
-		if (array_key_exists($guid, $this->sunStore->gameobject))
+		if (array_key_exists($spawnID, $this->sunStore->gameobject))
 			return;
 		
-		$tc_gameobject = &$this->tcStore->gameobject[$guid];
+		$tc_gameobject = &$this->tcStore->gameobject[$spawnID];
 		
-		$tlk_gameobject = !array_key_exists($tc_gameobject->id, $this->sunStore->gameobject_template); //TODO not valid anymore? since we have TLK objects
-		if ($tlk_gameobject) {
+		// import template if missing
+		if (FindFirst($this->sunStore->gameobject_template, "entry", $tc_gameobject->id) === null) {
 			ImportGameObjectTemplate($tc_gameobject->id);
-			if (IsTLKGameObject($tc_gameobject->id) && $patch_min < 5)
-				$patch_min = 5;
+			$patch_min = 5; // assume it's a TLK object then
 		}
 		
+		//create gameobject_entry
+		$sun_gameobject_entry = new stdClass;
+		$sun_gameobject_entry->spawnID = $spawnID;
+		$sun_gameobject_entry->entry   = $tc_gameobject->id;
+
+		$this->sunStore->gameobject_entry[$spawnID] = $sun_gameobject_entry;
+		fwrite($this->file, WriteObject($this->conn, "gameobject_entry", $sun_gameobject_entry));
+
 		//create gameobject
 		$sun_gameobject = new stdClass;
-		$sun_gameobject->guid             = $guid;
-		$sun_gameobject->id               = $tc_gameobject->id;
+		$sun_gameobject->spawnID          = $spawnID;
 		$sun_gameobject->map              = $tc_gameobject->map;
 		$sun_gameobject->spawnMask        = $tc_gameobject->spawnMask;
 		$sun_gameobject->position_x       = $tc_gameobject->position_x;
@@ -2505,23 +2455,24 @@ class DBConverter
 		$sun_gameobject->ScriptName       = $tc_gameobject->ScriptName;
 		if (IsTLKMap($sun_gameobject->map))
 			$patch_min = 5;
+
 		$sun_gameobject->patch_min     = $patch_min;
 		$sun_gameobject->patch_max     = $patch_max;
 		
-		$this->sunStore->gameobject[$guid] = $sun_gameobject;
+		$this->sunStore->gameobject[$spawnID] = $sun_gameobject;
 		fwrite($this->file, WriteObject($this->conn, "gameobject", $sun_gameobject));
 		
 		//game event gameobject
-		if (array_key_exists($guid, $this->tcStore->game_event_gameobject)) {
+		if (array_key_exists($spawnID, $this->tcStore->game_event_gameobject)) {
 			$sun_geg = new stdClass;
-			$sun_geg->event = $this->tcStore->game_event_gameobject[$guid]->eventEntry;
-			$sun_geg->guid = $guid;
-			$this->sunStore->game_event_gameobject[$guid] = $sun_geg;
+			$sun_geg->event = $this->tcStore->game_event_gameobject[$spawnID]->eventEntry;
+			$sun_geg->guid = $spawnID;
+			$this->sunStore->game_event_gameobject[$spawnID] = $sun_geg;
 			fwrite($this->file, WriteObject($this->conn, "game_event_gameobject", $sun_geg));
 		}
 		
-		$this->ImportSpawnGroup($guid, false);
-		$this->ImportPool($guid, false);
+		$this->ImportSpawnGroup($spawnID, false);
+		$this->ImportPool($spawnID, false);
 	}
 	
 	function DeleteSunGameObjectSpawn(int $spawn_id)

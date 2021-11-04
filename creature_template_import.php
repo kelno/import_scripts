@@ -19,7 +19,7 @@ $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $query = "SELECT tc.entry 
 FROM ${sunWorld}.creature_template sun 
 RIGHT JOIN ${tcWorld}.creature_template tc ON tc.entry = sun.entry 
-WHERE sun.entry IS NULL OR sun.patch >= 5 AND sun.entry NOT IN (SELECT entry FROM ${sunWorld}.creature_template WHERE patch = 0)
+WHERE sun.entry IS NULL OR (sun.patch >= 5 AND sun.entry IS NULL OR sun.entry NOT IN (SELECT entry FROM ${sunWorld}.creature_template WHERE patch = 0))
 ORDER BY tc.entry
 ";
 

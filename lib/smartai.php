@@ -8,12 +8,6 @@ abstract class SmartSourceType
 	const timedactionlist = 9;
 }
 
-abstract class MapSpawnType
-{
-	const creature = 0;
-	const gameobject = 1;
-}
-
 abstract class SmartEvent
 {
 	const UPDATE_IC                   = 0;    
@@ -317,3 +311,7 @@ function IsActionIgnoreTarget(int $action_type)
 	}
 }
 
+function SortSmartAI($a, $b) : int
+{
+	return $a->id > $b->id;
+}

@@ -89,19 +89,29 @@ function CheckIdenticalObject(&$objectA, &$objectB) : bool
     return true;
 }
 
-// currently not working as expected...
-function CheckIdentical(array &$sunContainer, array &$tcContainer, string $keyname, $value) : bool
+// you can provide a function usortCallback to make sure the values are compared in the same order. For example if there is multiple smart entry for a creature, this is needed to make sure they are compared correctly id matching id.
+function CheckIdentical(array &$sunContainer, array &$tcContainer, string $keyname, $value, $usortCallback) : bool
 {
 	$sunResults = FindAll($sunContainer, $keyname, $value);
 	$tcResults = FindAll($tcContainer, $keyname, $value);
-	return $sunResults == $tcResults; //does this work okay? This is supposed to compare keys + values, but we don't care about keys.
+
+	usort($sunResults, $usortCallback);
+	usort($tcResults, $usortCallback);
+
+	if (count($sunResults) != count($tcResults))
+		return false;
+	for ($i = 0; $i < count($sunResults); ++$i)
+		if (!CheckIdenticalObject($sunResults[$i], $tcResults[$i]))
+			return false;
+
+	return true;
 }
 
 function FindAll(array &$container, string $keyname, $value) : array
 {
 	$results = [];
 	
-	foreach(array_keys($container) as $key)
+	foreach(array_keys($container) as &$key)
 		if($container[$key]->$keyname == $value)
 			array_push($results, $container[$key]);
 			
@@ -110,7 +120,7 @@ function FindAll(array &$container, string $keyname, $value) : array
 
 function FindFirst(array &$container, string $keyname, $value)
 {
-	foreach(array_keys($container) as $key)
+	foreach(array_keys($container) as &$key)
 		if($container[$key]->$keyname == $value)
             return $container[$key];
 			
@@ -119,7 +129,7 @@ function FindFirst(array &$container, string $keyname, $value)
 
 function RemoveAny(&$container, string $keyname, $value)
 {
-	foreach(array_keys($container) as $key)
+	foreach(array_keys($container) as &$key)
 		if($container[$key]->$keyname == $value)
 			unset($container[$key]);
 }
@@ -247,4 +257,9 @@ function IsTLKGameObject(int $gob_id) : bool
 function IsTLKCreature(int $creature_id) : bool
 {
 	return $creature_id > 2909 && $creature_id < 1000000; // those are customs
+}
+
+function SortLoot($a, $b) : int
+{
+	return $a->Item > $b->Item;
 }
