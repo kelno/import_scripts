@@ -2302,11 +2302,9 @@ class DBConverter
 			$tc_creature_addon = &$this->tcStore->creature_addon[$guid];
 		}
 		
-		if (IsTLKCreature($tc_creature->id)) {
-			ImportCreatureTemplate($tc_creature->id);
+		if (IsTLKCreature($tc_creature->id))
 			if ($patch_min < 5)
 				$patch_min = 5;
-		}
 		
 		//create creature
 		$sun_creature = new stdClass;
