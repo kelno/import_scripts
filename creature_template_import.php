@@ -31,7 +31,7 @@ $results = $stmt->fetchAll();
 $size = count($results);
 $i = 1;
 foreach($results as &$v) {
-    echo "Importing creature template id {$v['entry']} (${i} over ${size})" .PHP_EOL;
+    echo "Importing creature template id {$v['entry']} (${i} of ${size})" .PHP_EOL;
 	fwrite($file, "-- Importing creature template id {$v['entry']}" . PHP_EOL);
 	$creature_id = $v['entry'];
     $converter->ImportCreatureTemplate($creature_id);
