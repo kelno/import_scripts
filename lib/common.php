@@ -117,6 +117,7 @@ class DBStore
 	public $gossip_menu_option = null; //key has NO MEANING
 	public $gossip_text = null; //key is text id
 	public $item_template = null; //key is item id
+	public $npc_text = null; //key is text id 
 	public $pickpocketing_loot_template = null; //key is Entry
 	public $points_of_interest = null; //key has NO MEANING
 	public $pool_members = null; //key has NO MEANING

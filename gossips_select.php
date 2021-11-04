@@ -13,6 +13,8 @@ function PrintOptions($menu_id, $sun)
 {
 	global $converter;
 	
+    $converter->LoadTable("gossip_menu_option");
+    
 	$subMenusIds = [];
 	$results = [];
 	if($sun)
@@ -42,10 +44,13 @@ function PrintText($text_id, $sun)
 {
 	global $converter;
 	
+    $converter->LoadTable("gossip_text");
+    $converter->LoadTable("npc_text");
+    
 	if($sun)
 		$text = $converter->sunStore->gossip_text[$text_id];
 	else
-		$text = $converter->tcStore->gossip_text[$text_id];
+		$text = $converter->tcStore->npc_text[$text_id];
 		
 	echo "text0_0: {$text->text0_0}" . PHP_EOL;
 	if($text->text0_1 != "" && $text->text0_0 != $text->text0_1)
@@ -62,6 +67,8 @@ function PrintMenuConditions($menu_id, $text_id, $sun)
 {
 	global $converter;
 	
+    $converter->LoadTable("conditions");
+    
 	static $CONDITION_SOURCE_TYPE_GOSSIP_MENU = 14;
 	
 	foreach(($sun ? $converter->sunStore->conditions : $converter->tcStore->conditions) as $condition) {
@@ -79,6 +86,8 @@ function PrintOptionConditions($menu_id, $option_id, $sun)
 {
 	global $converter;
 	
+    $converter->LoadTable("conditions");
+    
 	static $CONDITION_SOURCE_TYPE_GOSSIP_MENU_OPTION = 15;
 	
 	foreach(($sun ? $converter->sunStore->conditions : $converter->tcStore->conditions) as $condition) {
@@ -97,6 +106,8 @@ function PrintMenu($menu_id, bool $sun, bool $callFromMain = false)
 {
 	global $converter, $alreadyPrinted;
 	
+    $converter->LoadTable("gossip_menu");
+        
 	if($callFromMain)
 		$alreadyPrinted = [ ]; //reset
 	
