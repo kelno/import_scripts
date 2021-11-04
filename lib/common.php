@@ -299,6 +299,8 @@ class DBConverter
 	*/
 	function CheckExistsBroadcast(string $tableName, string $keyname, $value)
 	{
+        $this->LoadTable($tableName);
+        
 		$sunResults = FindAll($this->sunStore->$tableName, $keyname, $value);
 		if (empty($sunResults))
 			return;
@@ -307,9 +309,9 @@ class DBConverter
 		if (empty($tcResults))
 			throw new ImportException("Checked for broadcast existence but TC has no value?");
 		
-		$sunMaleText = substr($sunResults[0]->MaleText, 0, 255);
-		$tcMaleText = substr($tcResults[0]->MaleText, 0, 255);
-		if (levenshtein($sunMaleText, $tcMaleText) > 2) { //allow very similar strings
+		$sunText = substr($sunResults[0]->Text, 0, 255);
+		$tcText = substr($tcResults[0]->Text, 0, 255);
+		if (levenshtein($sunText, $tcText) > 2) { //allow very similar strings
 		//if ($sunResults != $tcResults) { //does this work okay? This is supposed to compare keys + values, but we don't care about keys.
 			//var_dump($sunResults);
 			//var_dump($tcResults);
@@ -322,6 +324,8 @@ class DBConverter
 
 	function CheckBroadcast(int $broadcast_id)
 	{
+        $this->LoadTable("broadcast_text");
+        
 		if (!array_key_exists($broadcast_id, $this->tcStore->broadcast_text))
 			throw new ImportException("BroadcastText $broadcast_id does not exists in TC db");
 
@@ -362,6 +366,8 @@ class DBConverter
 	{
 		static $CONDITION_SOURCE_TYPE_GOSSIP_MENU = 14;
 		 
+        $this->LoadTable("conditions");
+        
 		$this->timelol("CMO1");
 		
 		foreach(array_keys($this->tcStore->conditions) as $key) {
@@ -396,6 +402,8 @@ class DBConverter
 	{
 		static $CONDITION_SOURCE_TYPE_GOSSIP_MENU_OPTION = 15;
 		
+        $this->LoadTable("conditions");
+        
 		foreach(array_keys($this->tcStore->conditions) as $key) {
 			if ($this->tcStore->conditions[$key]->SourceTypeOrReferenceId != $CONDITION_SOURCE_TYPE_GOSSIP_MENU_OPTION)
 			   continue;
@@ -433,16 +441,17 @@ class DBConverter
 		}
 		
         $this->LoadTable("gossip_text");
+        $this->LoadTable("npc_text");
         
 		LogDebug("Importing text {$tc_text_id}");
 		
-		if (!array_key_exists($tc_text_id, $this->tcStore->gossip_text)) {
-			echo "TextId {$tc_text_id} does not exists in TC db?" . PHP_EOL;
+		if (!array_key_exists($tc_text_id, $this->tcStore->npc_text)) {
+			LogError("TextId {$tc_text_id} does not exists in TC db?");
 			assert(false);
 			exit(1);
 		}
 		
-		$tc_text = &$this->tcStore->gossip_text[$tc_text_id];
+		$tc_text = &$this->tcStore->npc_text[$tc_text_id];
 		$sun_text_id = $tc_text_id;
 		if (array_key_exists($tc_text_id, $this->sunStore->gossip_text)) {
 			$sun_text = $this->sunStore->gossip_text[$tc_text_id];
@@ -456,7 +465,7 @@ class DBConverter
 		}
 		
 		//convert TC table to Sun table here
-		$sun_text = new stdClass; //anonymous object
+		$sun_text = new stdClass;
 		$sun_text->ID = $sun_text_id;
 		$sun_text->comment = "Imported from TC";
 		for($i = 0; $i < 8; $i++) {
@@ -478,9 +487,10 @@ class DBConverter
 			$fieldName = 'Probability' . $i;
 			$sun_text->$fieldName = $tc_text->$fieldName;
 			
-			for($j = 0; $j < 6; $j++) {
-				$fieldName = 'em' . $i . '_' . $j;
-				$sun_text->$fieldName = $tc_text->$fieldName;
+			for($j = 0; $j < 3; $j++) {
+				$sunFieldName = 'em' . $i . '_' . $j;
+				$tcFieldName = 'Emote' . $i . '_' . $j;
+				$sun_text->$sunFieldName = $tc_text->$tcFieldName;
 			}
 		}
 		
@@ -632,7 +642,7 @@ class DBConverter
 
 	private $convertedTCMenus = [];
 
-	//return sun menu
+	// return sun menu
 	function CreateMenu(int $tc_menu_id) : int
 	{
 		if (array_key_exists($tc_menu_id, $this->convertedTCMenus))
@@ -998,7 +1008,7 @@ class DBConverter
 		if (empty($creature_template_resistance))
             return;
         
-		$sun_results = FindFirst($this->sunStore->creature_template_resistance, "CreatureID", $creature_id);
+		$sun_result = FindFirst($this->sunStore->creature_template_resistance, "CreatureID", $creature_id);
 		if ($sun_result != null)
         {
             if (CheckIdenticalObject($sun_result, $creature_template_resistance))
@@ -1049,21 +1059,20 @@ class DBConverter
 
         $this->LoadTable("creature_template");
 
-		$tc_results = FindAll($this->tcStore->creature_template, "entry", $creature_id);
-		if (empty($tc_results))
+		$creature_template = FindFirst($this->tcStore->creature_template, "entry", $creature_id);
+		if ($creature_template === null)
 			throw new ImportException("Trying to import non existing TLK creature template {$creature_id}");
 
 		$sun_results = FindAll($this->sunStore->creature_template, "entry", $creature_id);
 		if (!empty($sun_results))
         {
             if ($force)
-                RemoveAny($this->tcStore->creature_template, "entry", $creature_id);
+                RemoveAny($this->sunStore->creature_template, "entry", $creature_id);
             else
                 throw new ImportException("Trying to import already existing creature template {$creature_id}");
         }
 
         // copy TC one and make some arrangements
-		$creature_template = $tc_results[0];
 		$creature_template->patch = 5;
         unset($creature_template->import);
         unset($creature_template->movementId);
@@ -1074,7 +1083,7 @@ class DBConverter
         $creature_template->lootid = null; //TODO 
         $creature_template->pickpocketloot = null; //TODO 
         $creature_template->skinloot = null; //TODO 
-        $creature_template->gossip_menu_id = null; //TODO 
+        $creature_template->gossip_menu_id = $this->CreateMenu($creature_template->gossip_menu_id);
 
         $this->ImportCreatureTemplateAddon($creature_id);
         $this->ImportCreatureTemplateMovement($creature_id);
@@ -1914,7 +1923,12 @@ class DBConverter
 		
 		//will often be equal to tc path id, unless it's not free
 		$sun_path_id = $this->ImportWaypoints($guid, $tc_creature_addon->path_id);
-		
+		if ($sun_path_id === 0)
+        {
+			LogError("Trying to replace waypoints for creature {$guid}, but creature has wrong path on trinity");
+            return;
+        }
+
 		if (array_key_exists($guid, $this->sunStore->creature_addon)) {
 			$this->sunStore->creature_addon[$guid]->path_id = $sun_path_id;
 			fwrite($this->file, "UPDATE creature_addon SET path_id = {$sun_path_id} WHERE spawnID = {$guid};" . PHP_EOL);
@@ -1941,7 +1955,7 @@ class DBConverter
 		}
 	}
 	
-	//return new path_id
+	// returns new path_id
 	function ImportWaypoints(int $guid, int $tc_path_id, bool $includeMovementTypeUpdate = true) : int
 	{
         $this->LoadTable("creature");
@@ -1951,8 +1965,9 @@ class DBConverter
 		$results = FindAll($this->tcStore->waypoint_data, "id", $tc_path_id);
 		if (empty($results))
 		{
-			$msg = "Tried to import waypoint_data with path_id {$tc_path_id} but no such path exists";
-			throw new ImportException($msg);
+			LogError("Tried to import waypoint_data with path_id {$tc_path_id} but no such path exists. This is likely a TC db error.");
+            return 0;
+			//throw new ImportException($msg);
 		}
 		
 		if (CheckAlreadyImported($tc_path_id)) {
@@ -2249,12 +2264,12 @@ class DBConverter
 		//create creature_addon
 		if ($tc_creature_addon) {
 			$path_id = $tc_creature_addon->path_id;
-			if ($path_id) {
+			if ($path_id) 
 				$path_id = $this->ImportWaypoints($guid, $path_id, false); 
-			} else {
+
+            if (!$path_id)
 				$path_id = "NULL";
-			}
-			
+                
 			$sun_creature_addon = new stdClass;
 			$sun_creature_addon->spawnID = $guid;
 			$sun_creature_addon->path_id = $path_id;
