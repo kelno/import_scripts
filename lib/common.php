@@ -1083,19 +1083,39 @@ class DBConverter
         $creature_template->lootid = null; //TODO 
         $creature_template->pickpocketloot = null; //TODO 
         $creature_template->skinloot = null; //TODO 
-        $creature_template->gossip_menu_id = $this->CreateMenu($creature_template->gossip_menu_id);
+        $creature_template->gossip_menu_id = $creature_template->gossip_menu_id ? $this->CreateMenu($creature_template->gossip_menu_id) : null;
 
         $this->ImportCreatureTemplateAddon($creature_id);
         $this->ImportCreatureTemplateMovement($creature_id);
         $this->ImportCreatureTemplateResistance($creature_id);
         $this->ImportCreatureTemplateSpell($creature_id);
         
-        //TODO: SmartAI
+        $this->ImportCreatureSmartAI($creature_id);
 
 		array_push($this->sunStore->creature_template, $creature_template);
 		fwrite($this->file, WriteObject($this->conn, "creature_template", $creature_template)); 
 	}
 
+    function ImportCreatureSmartAI(int $creature_id)
+    {
+		if (CheckAlreadyImported($creature_id))
+			return;
+        
+        $this->LoadTable("smart_scripts");
+        
+		if (CheckIdentical($this->sunStore->smart_scripts, $this->tcStore->smart_scripts, "entryorguid", $creature_id)) {
+			//echo "Already identical, skipping" . PHP_EOL;
+			LogDebug("SmartAI for creature {$creature_id} is already in db and identical.");
+			return;
+		}
+        
+		$tc_creature_template = FindFirst($this->tcStore->creature_template, "entry", $creature_id);
+        if ($tc_creature_template->AIName != "SmartAI")
+            return;
+        
+		$this->CreateSmartAI($creature_id, SmartSourceType::creature, SmartSourceType::creature, 0, false);
+    }
+    
 	function CheckImportCreatureSmart(int $creature_id, int& $patch, bool $hasToBeSmart) 
 	{
 		if (CheckAlreadyImported($creature_id))
@@ -1104,12 +1124,10 @@ class DBConverter
         $this->LoadTable("creature_template");
         $this->LoadTable("smart_scripts");
 
-		$tc_results = FindAll($this->tcStore->creature_template, "entry", $creature_id);
-		if (empty($tc_results))
+		$tc_creature_template = FindFirst($this->tcStore->creature_template, "entry", $creature_id);
+		if ($tc_creature_template === null)
 			throw new ImportException("Has a reference on a non existing creature {$creature_id}");
 
-		//Only use first result... TC always has only one entry per creature
-		$tc_creature_template = $tc_results[0];
 		if ($tc_creature_template->AIName != "SmartAI") {
 			if ($hasToBeSmart)
 				throw new ImportException("Has a reference on a non Smart creature {$creature_id}");
@@ -1129,9 +1147,9 @@ class DBConverter
 
 		$sun_results = FindAll($this->sunStore->creature_template, "entry", $creature_id);
 		if (empty($sun_results)) {
-			LogWarning("Targeted creature entry {$creature_id} doesn't exists in our database, importing a creature_template for it and setting this smart line to patch 5.");
-			$patch = 5;
-			$this->ImportCreatureTemplate($creature_id);
+            LogWarning("Targeted creature entry {$creature_id} doesn't exists in our database, importing a creature_template for it and setting this smart line to patch 5.");
+            $patch = 5;
+            $this->ImportCreatureTemplate($creature_id);
 		}
 		echo "Importing referenced summon/target creature id {$creature_id}, "; //... continue this line later
 		foreach($sun_results as $sun_result) {
@@ -1254,7 +1272,7 @@ class DBConverter
 	}
 
 	// return creature id for this target (import if missing)
-	function GetTargetCreatureId($sun_smart_entry, int $creature_id, int& $patch) : int
+	function GetTargetCreatureId(&$sun_smart_entry, int $creature_id, int& $patch) : int
 	{
         $this->LoadTable("creature");
         
@@ -1417,7 +1435,7 @@ class DBConverter
 	}
 	
 	// original_entry: if we're in an action list, the creature/gob it was called from
-	function CreateSmartAI(int $tc_entry, int $source_type, int $original_type, int $original_entry = 0)
+	function CreateSmartAI(int $tc_entry, int $source_type, int $original_type, int $original_entry = 0, bool $updateScriptName = true)
 	{
 		if (CheckAlreadyImported($tc_entry + $source_type << 28)) { //max entry is 30.501.000 (smaller number with 28 bits shift is 268.435.456)
 			LogDebug("SmartAI {$tc_entry} {$source_type} is already imported");
@@ -1429,32 +1447,34 @@ class DBConverter
         
 		$this->timelol("1");
 		
-		$sql = "";
-		switch($source_type)
-		{
-			case SmartSourceType::creature:
-				if (!$original_entry)
-					$original_entry = $tc_entry;
-				$sql .= "UPDATE creature_template SET ScriptName = '', AIName = 'SmartAI' WHERE entry = {$tc_entry};" . PHP_EOL;
-				break;
-			case SmartSourceType::gameobject:
-				if (!$original_entry)
-					$original_entry = $tc_entry;
-				$sql .= "UPDATE gameobject_template SET ScriptName = '', AIName = 'SmartAI' WHERE entry = {$tc_entry};" . PHP_EOL;
-				break;
-			case SmartSourceType::areatrigger:
-				if (!$original_entry)
-					$original_entry = $tc_entry;
-				$sql .= "UPDATE areatrigger_scripts SET ScriptName = 'SmartTrigger' WHERE entry = {$tc_entry};" . PHP_EOL;
-				break;
-			case SmartSourceType::timedactionlist:
-				break; //nothing to do
-			default:
-				echo "Unknown source type {$source_type}" . PHP_EOL;
-				assert(false);
-				exit(1);
-		}
-		fwrite($this->file, $sql);
+        if ($updateScriptName) {
+            $sql = "";
+            switch($source_type)
+            {
+                case SmartSourceType::creature:
+                    if (!$original_entry)
+                        $original_entry = $tc_entry;
+                    $sql .= "UPDATE creature_template SET ScriptName = '', AIName = 'SmartAI' WHERE entry = {$tc_entry};" . PHP_EOL;
+                    break;
+                case SmartSourceType::gameobject:
+                    if (!$original_entry)
+                        $original_entry = $tc_entry;
+                    $sql .= "UPDATE gameobject_template SET ScriptName = '', AIName = 'SmartAI' WHERE entry = {$tc_entry};" . PHP_EOL;
+                    break;
+                case SmartSourceType::areatrigger:
+                    if (!$original_entry)
+                        $original_entry = $tc_entry;
+                    $sql .= "UPDATE areatrigger_scripts SET ScriptName = 'SmartTrigger' WHERE entry = {$tc_entry};" . PHP_EOL;
+                    break;
+                case SmartSourceType::timedactionlist:
+                    break; //nothing to do
+                default:
+                    echo "Unknown source type {$source_type}" . PHP_EOL;
+                    assert(false);
+                    exit(1);
+            }
+            fwrite($this->file, $sql);
+        }
 		$this->DeleteAllSmart($tc_entry, $source_type);
 		
 		$this->timelol("2");
