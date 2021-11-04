@@ -2210,33 +2210,28 @@ class DBConverter
 
 	function ImportPool(int $guid, bool $creature) //else gameobject
 	{
-        $this->LoadTable("pool_creature");
-        $this->LoadTable("pool_gameobject");
+        $this->LoadTable("pool_members");
         $this->LoadTable("pool_template");
         
 		$tc_pool_entry = null;
-		if ($creature) {
-			if (!array_key_exists($guid, $this->tcStore->pool_creature))
-				return;
-			
-			$tc_pool_entry = $this->tcStore->pool_creature[$guid]->pool_entry;
-		} else {
-			if (!array_key_exists($guid, $this->tcStore->pool_gameobject))
-				return;
-			
-			$tc_pool_entry = $this->tcStore->pool_gameobject[$guid]->pool_entry;
-		}
-		
+		//$sun_results = FindAll($this->sunStore->creature_template, "entry", $creature_id);
+        $tc_results = FindAll($this->tcStore->pool_members, "spawnId", $guid);
+        $tc_pool_member = FindFirst($tc_results, "type", $creature ? 0 : 1);
+        if ($tc_pool_member !== null)
+            return;
+        
+        $tc_pool_entry = $tc_pool_member->poolSpawnId;
+
 		if (!array_key_exists($tc_pool_entry, $this->tcStore->pool_template)) {
 			echo "ERROR: TC has " . $creature ? "creature" : "gob" . " {$guid} which part of pool {$pool_entry}, but this pool does not exists" . PHP_EOL;
 			return;
 		}
 		
-		//Handle pool template
+		// Handle pool template
 		if (array_key_exists($tc_pool_entry, $this->sunStore->pool_template)) { 
 			if ($this->sunStore->pool_template[$tc_pool_entry]->description != $this->tcStore->pool_template[$tc_pool_entry]->description)
 			{ //we have that pool id but not the same pool
-				echo "WARNING: Imported " . $creature ? "creature" : "gob" . " {$guid} is part of pool {$tc_pool_entry} but a pool with this entry (but different description already exists). Need manual fix." . PHP_EOL;
+				LogError("WARNING: Imported " . $creature ? "creature" : "gob" . " {$guid} is part of pool {$tc_pool_entry} but a pool with this entry (but different description already exists). Need manual fix.");
 				return;
 			}
 			else { //we have that pool id and same pool, no need to import template
@@ -2246,20 +2241,15 @@ class DBConverter
 		else { 
 			//if sun doesn't have that pool
 			$sun_pool_template = $this->tcStore->pool_template[$tc_pool_entry];
+            $sun_pool_template->max_limit_percent = 0;
+            
 			$this->sunStore->pool_template[$tc_pool_entry] = $sun_pool_template;
 			fwrite($this->file, WriteObject($this->conn, "pool_template", $sun_pool_template));
 		}
 		
 		//and finally add to pool
-		if ($creature) {
-			$pool_creature = $this->tcStore->pool_creature[$guid];
-			$this->sunStore->pool_creature[$guid] = $pool_creature;
-			fwrite($this->file, WriteObject($this->conn, "pool_creature", $pool_creature));
-		} else {
-			$pool_gameobject = $this->tcStore->pool_gameobject[$guid];
-			$this->sunStore->pool_gameobject[$guid] = $pool_gameobject;
-			fwrite($this->file, WriteObject($this->conn, "pool_gameobject", $pool_gameobject));
-		}
+        $sun_pool_member = $tc_pool_member;
+        fwrite($this->file, WriteObject($this->conn, "pool_members", $sun_pool_member));
 	}
 
 	function HasSunModelInTemplate($creature_id, $model_id)
@@ -2355,6 +2345,7 @@ class DBConverter
 		$sun_creature->MovementType = $tc_creature->MovementType;
 		$sun_creature->unit_flags = $tc_creature->unit_flags;
 		$sun_creature->pool_id = 0;
+
 		if (IsTLKMap($sun_creature->map))
 			$patch_min = 5;
         
@@ -2399,6 +2390,7 @@ class DBConverter
 		//game event creature
 		if (array_key_exists($guid, $this->tcStore->game_event_creature)) {
 			$sun_gec = new stdClass;
+            //TODO: tc event might not exists... but if it exists we assume it's the right one, we made some id sync for that before
 			$sun_gec->event = $this->tcStore->game_event_creature[$guid]->eventEntry;
 			$sun_gec->guid = $guid;
 			$this->sunStore->game_event_creature[$guid] = $sun_gec;
