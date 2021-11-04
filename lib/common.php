@@ -2337,16 +2337,15 @@ class DBConverter
 		$sun_creature->position_x = $tc_creature->position_x;
 		$sun_creature->position_y = $tc_creature->position_y;
 		$sun_creature->position_z = $tc_creature->position_z;
-		$sun_creature->orientation= $tc_creature->orientation;
+		$sun_creature->orientation = $tc_creature->orientation;
 		$sun_creature->spawntimesecsmin = $tc_creature->spawntimesecs;
 		$sun_creature->spawntimesecsmax = $tc_creature->spawntimesecs;
-		$sun_creature->spawndist = $tc_creature->spawndist;
+		$sun_creature->wander_distance = $tc_creature->wander_distance;
 		$sun_creature->currentwaypoint = $tc_creature->currentwaypoint;
 		$sun_creature->curhealth = $tc_creature->curhealth;
 		$sun_creature->curmana = $tc_creature->curmana;
 		$sun_creature->MovementType = $tc_creature->MovementType;
 		$sun_creature->unit_flags = $tc_creature->unit_flags;
-		$sun_creature->pool_id = 0;
 
 		if (IsTLKMap($sun_creature->map))
 			$patch_min = 5;
@@ -2372,18 +2371,17 @@ class DBConverter
 				$path_id = $this->ImportWaypoints($guid, $path_id, false); 
 
             if (!$path_id)
-				$path_id = "NULL";
+				$path_id = null;
                 
 			$sun_creature_addon = new stdClass;
 			$sun_creature_addon->spawnID = $guid;
 			$sun_creature_addon->path_id = $path_id;
 			$sun_creature_addon->mount = $tc_creature_addon->mount;
-			$sun_creature_addon->bytes0 = 0;
-			$sun_creature_addon->bytes1 = $tc_creature_addon->bytes1;
-			$sun_creature_addon->bytes2 = $tc_creature_addon->bytes2;
+            $sun_creature_addon->standState = $tc_creature_addon->bytes1 & 0xFF; // first 8 bytes of bytes 1 are stand state
+            // other bytes fields are not handled in this table for sunstrider
 			$sun_creature_addon->emote = $tc_creature_addon->emote;
 			$sun_creature_addon->auras = $tc_creature_addon->auras ? $tc_creature_addon->auras : 'NULL';
-			//todo: check auras with spell_template, some are TLK only
+			//could be improved here: check auras with spell_template, some are TLK only
 			
 			$this->sunStore->creature_addon[$guid] = $sun_creature_addon;
 			fwrite($this->file, WriteObject($this->conn, "creature_addon", $sun_creature_addon));
