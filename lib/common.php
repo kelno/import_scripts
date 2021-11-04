@@ -959,7 +959,7 @@ class DBConverter
         
         if (FindFirst($this->sunStore->$tableName, "Entry", $tcLootId) !== null) {
             // Do we have an already existing loot at this id with same values?
-            if (CheckIdentical($this->sunStore->$tableName, $this->tcStore->$tableName, "entry", $tcLootId)) {
+            if (CheckIdentical($this->sunStore->$tableName, $this->tcStore->$tableName, "Entry", $tcLootId)) {
                 LogDebug("{$tableName} {$tcLootId}: found already identical loot in our DB at this ID, skipping");
                 // we assume referenced loot template are also the same if they have the same ids
                 return $tcLootId;
@@ -2218,7 +2218,7 @@ class DBConverter
 		//$sun_results = FindAll($this->sunStore->creature_template, "entry", $creature_id);
         $tc_results = FindAll($this->tcStore->pool_members, "spawnId", $guid);
         $tc_pool_member = FindFirst($tc_results, "type", $creature ? 0 : 1);
-        if ($tc_pool_member !== null)
+        if ($tc_pool_member === null)
             return;
         
         $tc_pool_entry = $tc_pool_member->poolSpawnId;
@@ -2253,35 +2253,6 @@ class DBConverter
         fwrite($this->file, WriteObject($this->conn, "pool_members", $sun_pool_member));
 	}
 
-	function HasSunModelInTemplate($creature_id, $model_id)
-	{
-        $this->LoadTable("creature_template");
-        
-		//check if template for this creature has this modelid. Also check the modelids other gender.
-		$sun_results = FindAll($this->sunStore->creature_template, "entry", $creature_id);
-		if (!empty($sun_results)) {
-			foreach($sun_results as &$result) {
-				$sun_models = [
-					$result->modelid1, $result->modelid2, $result->modelid3, $result->modelid4
-				];
-				$sun_models_other_gender = [];
-				foreach($sun_models as &$sun_model) {
-					if (array_key_exists($sun_model, $this->sunStore->creature_model_info)) {
-						if ($other_gender_model = $this->sunStore->creature_model_info[$sun_model]->modelid_other_gender) {
-							array_push($sun_models_other_gender, $other_gender_model);
-						}
-					}
-				}
-				array_merge ($sun_models, $sun_models_other_gender);
-				if (!in_array($model_id, $sun_models)) {
-					//echo "Not the same modelid id {$creature_id}, checking modelid: {$model_id}" . PHP_EOL;
-					return false;
-				}
-			}
-		}
-		return true;
-	}
-	
 	//don't forget to call HandleFormations after this
 	function ImportTCCreature(int $guid, int $patch_min = 0, int $patch_max = 10)
 	{
@@ -2311,26 +2282,8 @@ class DBConverter
 		$sun_creature->spawnID = $guid;
 		$sun_creature->map = $tc_creature->map;
 		$sun_creature->spawnMask = $tc_creature->spawnMask;
-		$keep_model_id = true;
-		if ($tc_creature->modelid) {
-			if ($this->HasSunModelInTemplate($tc_creature->id, $tc_creature->modelid)) {
-				LogDebug("Has LK modelid {$tc_creature->modelid} already in creature template, set to 0.");
-				$keep_model_id = false;
-			}
-			
-			if ($keep_model_id) {
-				$model_info = array_key_exists($tc_creature->modelid, $this->sunStore->creature_model_info) ? $this->sunStore->creature_model_info[$tc_creature->modelid] : null;
-				if ($model_info) {
-					if ($model_info->patch > 4) {
-						//this is a LK model, what do to here? Just set model to 0 for now.
-						LogDebug("Has LK modelid {$tc_creature->modelid}, set to 0.");
-						$keep_model_id = false;
-					}
-				} else
-					throw new ImportException("Non existing model id {$tc_creature->modelid}?");
-			}
-		}
-		$sun_creature->modelid = $keep_model_id ? ($tc_creature->modelid ? $tc_creature->modelid : "NULL") : "NULL";
+        // for now just let the core filter out the bad models. creature_model_info needs to be filled with all the TC values already
+		$sun_creature->modelid = $tc_creature->modelid ? $tc_creature->modelid : null;
 		$sun_creature->equipment_id = $tc_creature->equipment_id; //import equip ID?
 		$sun_creature->position_x = $tc_creature->position_x;
 		$sun_creature->position_y = $tc_creature->position_y;
