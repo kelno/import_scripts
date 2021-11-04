@@ -934,16 +934,15 @@ class DBConverter
         
         $this->LoadTable("creature_template_addon");
         
-		$tc_results = FindAll($this->tcStore->creature_template_addon, "entry", $creature_id);
-		if (empty($tc_results))
+		$creature_template_addon = FindFirst($this->tcStore->creature_template_addon, "entry", $creature_id);
+		if (empty($creature_template_addon))
             return;
         
-		$sun_results = FindAll($this->sunStore->creature_template_addon, "entry", $creature_id);
-		if (!empty($sun_results))
+		$sun_result = FindFirst($this->sunStore->creature_template_addon, "entry", $creature_id);
+		if (!empty($sun_result))
 			throw new ImportException("Trying to import already existing creature template addon {$creature_id}");
 
         // copy TC one and make some arrangements
-		$creature_template_addon = $tc_results[0];
         $creature_template_addon->patch = 5;
         $standState = $creature_template_addon->bytes1 & 0xF; // first byte is stand state
         $creature_template_addon->standState = $standState;
@@ -951,7 +950,7 @@ class DBConverter
         unset($creature_template_addon->bytes2);
 
         if ($creature_template_addon->path_id)
-            $creature_template_addon->path_id = $this->ImportWaypoints(0, $creature_template_addon->path_id);
+            $creature_template_addon->path_id = $this->ImportWaypoints(0, $creature_template_addon->path_id, false);
         else
             $creature_template_addon->path_id = null;
         
@@ -966,16 +965,21 @@ class DBConverter
 
         $this->LoadTable("creature_template_movement");
 
-		$tc_results = FindAll($this->tcStore->creature_template_movement, "CreatureId", $creature_id);
-		if (empty($tc_results))
+		$creature_template_movement = FindFirst($this->tcStore->creature_template_movement, "CreatureId", $creature_id);
+		if ($creature_template_movement == null)
             return;
 
-		$sun_results = FindAll($this->sunStore->creature_template_movement, "CreatureId", $creature_id);
-		if (!empty($sun_results))
-			throw new ImportException("Trying to import already existing creature template movement {$creature_id}");
-
+		$sun_result = FindFirst($this->sunStore->creature_template_movement, "CreatureId", $creature_id);
+		if ($sun_result != null)
+        {
+            if (CheckIdenticalObject($sun_result, $creature_template_movement))
+            {
+                LogDebug("creature_template_movement for creature {$creature_id} is already in db and identical.");
+                return;
+            }
+        }
+            
         // copy TC one and make some arrangements
-		$creature_template_movement = $tc_results[0];
         unset($creature_template_movement->InteractionPauseTimer);
         
 		array_push($this->sunStore->creature_template_movement, $creature_template_movement);
@@ -989,16 +993,23 @@ class DBConverter
 
         $this->LoadTable("creature_template_resistance");
         
-        $tc_results = FindAll($this->tcStore->creature_template_resistance, "CreatureID", $creature_id);
-		if (empty($tc_results))
+        $creature_template_resistance = FindFirst($this->tcStore->creature_template_resistance, "CreatureID", $creature_id);
+		if (empty($creature_template_resistance))
             return;
         
-		$sun_results = FindAll($this->sunStore->creature_template_resistance, "CreatureID", $creature_id);
-		if (!empty($sun_results))
-			throw new ImportException("Trying to import already existing creature template resistance {$creature_id}");
+		$sun_results = FindFirst($this->sunStore->creature_template_resistance, "CreatureID", $creature_id);
+		if ($sun_result != null)
+        {
+            if (CheckIdenticalObject($sun_result, $creature_template_resistance))
+            {
+                LogDebug("creature_template_resistance for creature {$creature_id} is already in db and identical.");
+                return;
+            }
+            else
+                throw new ImportException("Trying to import already existing creature template resistance {$creature_id}");  // or replace instead?
+        }
 
         // copy TC one and make some arrangements
-		$creature_template_resistance = $tc_results[0];
         $creature_template_resistance->patch = 5;
         unset($creature_template_resistance->VerifiedBuild);
         
@@ -1068,6 +1079,8 @@ class DBConverter
         $this->ImportCreatureTemplateMovement($creature_id);
         $this->ImportCreatureTemplateResistance($creature_id);
         $this->ImportCreatureTemplateSpell($creature_id);
+        
+        //TODO: SmartAI
 
 		array_push($this->sunStore->creature_template, $creature_template);
 		fwrite($this->file, WriteObject($this->conn, "creature_template", $creature_template)); 
@@ -1975,7 +1988,7 @@ class DBConverter
 			fwrite($this->file, WriteObject($this->conn, "waypoint_data", $sun_waypoint));
 		}
 		
-		if ($includeMovementTypeUpdate) {
+		if ($includeMovementTypeUpdate && $guid != 0) {
 			$this->sunStore->creature[$guid]->MovementType = 2;
 			fwrite($this->file, "UPDATE creature SET MovementType = 2 WHERE spawnID = {$guid};" . PHP_EOL);
 		}

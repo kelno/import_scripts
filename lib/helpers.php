@@ -75,6 +75,21 @@ function GetHighest(&$container, $keyname) : int
 	return $highest;
 }
 
+// loose identical check, if a field doesn't exist on one side, ignore it
+function CheckIdenticalObject(&$objectA, &$objectB) : bool
+{
+    if ($objectA === null || $objectB === null)
+        return false;
+    
+    foreach ($objectA as $keyA => &$valueA)
+        if (property_exists($objectB, $keyA))
+            if ($valueA != $objectB->$keyA)
+                return false;
+            
+    return true;
+}
+
+// currently not working as expected...
 function CheckIdentical(array &$sunContainer, array &$tcContainer, string $keyname, $value) : bool
 {
 	$sunResults = FindAll($sunContainer, $keyname, $value);
@@ -91,6 +106,15 @@ function FindAll(array &$container, string $keyname, $value) : array
 			array_push($results, $container[$key]);
 			
 	return $results;
+}
+
+function FindFirst(array &$container, string $keyname, $value)
+{
+	foreach(array_keys($container) as $key)
+		if($container[$key]->$keyname == $value)
+            return $container[$key];
+			
+	return null;
 }
 
 function RemoveAny(&$container, string $keyname, $value)

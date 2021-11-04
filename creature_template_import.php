@@ -16,23 +16,29 @@ $converter = new DBConverter($file);
 $conn = new PDO("mysql:host=localhost", $login, $password);
 $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-$query = "SELECT tc.entry
-FROM ${sunWorld}.creature_template sun
-RIGHT JOIN ${tcWorld}.creature_template tc ON tc.entry = sun.entry
-WHERE sun.entry IS NULL OR sun.patch >= 5";
+$query = "SELECT tc.entry 
+FROM ${sunWorld}.creature_template sun 
+RIGHT JOIN ${tcWorld}.creature_template tc ON tc.entry = sun.entry 
+WHERE sun.entry IS NULL OR sun.patch >= 5 AND sun.entry NOT IN (SELECT entry FROM ${sunWorld}.creature_template WHERE patch = 0)
+ORDER BY tc.entry
+";
 
 // MAIN
 $stmt = $conn->query($query);
 $stmt->setFetchMode(PDO::FETCH_ASSOC);
 
-foreach($stmt->fetchAll() as $v) {
+$results = $stmt->fetchAll();
+$size = count($results);
+$i = 1;
+foreach($results as &$v) {
+    echo "Importing creature template id {$v['entry']} (${i} over ${size})" .PHP_EOL;
 	fwrite($file, "-- Importing creature template id {$v['entry']}" . PHP_EOL);
 	$creature_id = $v['entry'];
     $converter->ImportCreatureTemplate($creature_id);
 	
 	fwrite($file, PHP_EOL . PHP_EOL);
-    
-    break; //testing
+    ++$i;
+    //break; //testing
 }
 
 fclose($file);
