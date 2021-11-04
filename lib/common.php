@@ -163,7 +163,7 @@ class DBStore
     {
         $stmt = $conn->query("SELECT * FROM {$this->databaseName}.{$tableName}");
 		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		foreach($stmt->fetchAll() as $v)
+		foreach($stmt->fetchAll() as &$v)
         {
 			$this->$tableName[$v->$keyName] = $v;
             //HACK //special handling for leader, it's always NULL in db for leader
@@ -172,23 +172,29 @@ class DBStore
         }
     }
     
-    function LoadTable(&$conn, string $tableName)
+    function LoadTable(&$conn, string $tableName) : bool
     {
         global $loadTableInfos;
         
         if ($this->$tableName != null)
-            return; //already loaded
+            return false; //already loaded
         
         if (!isset($loadTableInfos[$tableName]))
 			throw new ImportException("Could not find load table info for table {$tableName}");
         
-        $this->$tableName = [];
+        $this->$tableName = []; // prepare member array to fill
         $key = $this->loadmode == LoadMode::sunstrider ? $loadTableInfos[$tableName]->sunKey : $loadTableInfos[$tableName]->tcKey;
+        $disabled = $this->loadmode == LoadMode::sunstrider ? $loadTableInfos[$tableName]->disableSun : $loadTableInfos[$tableName]->disableTC;
+        
+        if ($disabled)
+            return false;
         
         if ($key != null)
             $this->LoadTableWithKey($conn, $tableName, $key);
         else
             $this->LoadTableNoKey($conn, $tableName, $key);
+
+        return true;
     }
 }
 
@@ -201,16 +207,16 @@ class LoadTableInfo
     
 	function __construct(string $sun = null, string $tc = null, bool $disableSun = false, bool $disableTC = false) 
     {
-        $sunKey = $sun;
-        $tcKey = $tc;
-        $disableSun = $disableSun;
-        $disableTC = $disableTC;
+        $this->sunKey = $sun;
+        $this->tcKey = $tc;
+        $this->disableSun = $disableSun;
+        $this->disableTC = $disableTC;
     }
 }
 
 $loadTableInfos = [];
 $loadTableInfos["broadcast_text"] = new LoadTableInfo("ID", "ID");
-$loadTableInfos["creature"] = new LoadTableInfo("spawnID", "spawnID"); //key is spawnID TODO: should be NO MEANING (have to change usage)
+$loadTableInfos["creature"] = new LoadTableInfo("spawnID", "guid"); //key is spawnID TODO: should be NO MEANING (have to change usage)
 $loadTableInfos["creature_addon"] = new LoadTableInfo("spawnID", "guid");
 $loadTableInfos["creature_entry"] = new LoadTableInfo(null, null, false, true);
 $loadTableInfos["conditions"] = new LoadTableInfo();
@@ -278,12 +284,11 @@ class DBConverter
     
     function LoadTable(string $tableName)
     {
-		echo "Loading tables {$tableName}... ";
+        $loaded = $this->sunStore->LoadTable($this->conn, $tableName);
+        $loaded = $this->tcStore->LoadTable($this->conn, $tableName) || $loaded;
         
-        $this->sunStore->LoadTable($this->conn, $tableName);
-        $this->tcStore->LoadTable($this->conn, $tableName);
-        
-		echo "   Done" . PHP_EOL;
+        if ($loaded)
+            echo "Loaded tables {$tableName}." . PHP_EOL;
     }
 	
 	/* This test pass if:
@@ -1787,7 +1792,6 @@ class DBConverter
 			return $action_id;
 		
         $this->LoadTable("waypoint_scripts");
-        
 		$results = FindAll($this->tcStore->waypoint_scripts, "id", $action_id);
 		if (empty($results))
 			throw new ImportException("ERROR: Tried to import waypoint_scripts with id {$action_id} but no such entry exists");

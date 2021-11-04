@@ -86,10 +86,9 @@ function FindAll(array &$container, string $keyname, $value) : array
 {
 	$results = [];
 	
-	foreach(array_keys($container) as $key) {
+	foreach(array_keys($container) as $key)
 		if($container[$key]->$keyname == $value)
 			array_push($results, $container[$key]);
-	}
 			
 	return $results;
 }
