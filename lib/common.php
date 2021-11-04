@@ -1534,6 +1534,7 @@ class DBConverter
         $this->LoadTable("spell_template");
         $this->LoadTable("creature_text");
         $this->LoadTable("creature");
+        $this->LoadTable("broadcast_text");
         
 		$this->timelol("CreateSmartAI", true);
 		$this->timelol("CreateSmartAI");
@@ -2290,6 +2291,7 @@ class DBConverter
         $this->LoadTable("creature");
         $this->LoadTable("creature_addon");
         $this->LoadTable("creature_entry");
+        $this->LoadTable("game_event_creature");
         
 		if (array_key_exists($guid, $this->sunStore->creature)) 
 			return;
@@ -2324,7 +2326,7 @@ class DBConverter
 					if ($model_info->patch > 4) {
 						//this is a LK model, what do to here? Just set model to 0 for now.
 						LogDebug("Has LK modelid {$tc_creature->modelid}, set to 0.");
-						$keep_model_id = 0;
+						$keep_model_id = false;
 					}
 				} else
 					throw new ImportException("Non existing model id {$tc_creature->modelid}?");
