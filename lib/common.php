@@ -179,7 +179,7 @@ class DBStore
     {
         global $loadTableInfos;
         
-        if ($this->$table_name != null)
+        if ($this->$table_name !== null)
             return false; //already loaded
         
         if (!isset($loadTableInfos[$table_name]))
@@ -319,7 +319,7 @@ class DBConverter
 		//if ($sun_results != $tc_results) { //does this work okay? This is supposed to compare keys + values, but we don't care about keys.
 			//var_dump($sun_results);
 			//var_dump($tc_results);
-			throw new ImportException("TC and SUN containers have different results for table {$table_name} and value {$value}");
+			throw new ImportException("TC and SUN containers have different results for table broadcast_text and value {$value}");
 		}
 		
 		//OK
@@ -376,23 +376,23 @@ class DBConverter
         $this->LoadTable("conditions");
         
         // we use a cache here instead of going through every conditions every time
-        if (empty($this->tcMenuConditionCache))
+        if (empty($this->tc_menu_condition_cache))
             foreach($this->tcStore->conditions as &$tc_condition) 
                 if ($tc_condition->SourceTypeOrReferenceId == $CONDITION_SOURCE_TYPE_GOSSIP_MENU)
                 {
-                    if (!array_key_exists($tc_condition->SourceGroup, $this->tcMenuConditionCache))
-                        $this->tcMenuConditionCache[$tc_condition->SourceGroup] = [];
+                    if (!array_key_exists($tc_condition->SourceGroup, $this->tc_menu_condition_cache))
+                        $this->tc_menu_condition_cache[$tc_condition->SourceGroup] = [];
                     
-                    array_push($this->tcMenuConditionCache[$tc_condition->SourceGroup], $tc_condition);
+                    array_push($this->tc_menu_condition_cache[$tc_condition->SourceGroup], $tc_condition);
                 }
         
 		$this->timelol("CMO", true);
 		$this->timelol("CMO");
 		
-        if (!array_key_exists($tc_menu_id, $this->tcMenuConditionCache))
+        if (!array_key_exists($tc_menu_id, $this->tc_menu_condition_cache))
             return;
         
-		foreach($this->tcMenuConditionCache[$tc_menu_id] as &$tc_condition) {
+		foreach($this->tc_menu_condition_cache[$tc_menu_id] as &$tc_condition) {
 			if ($tc_condition->SourceEntry != $tc_text_id) 
 			   continue;
 
@@ -1059,6 +1059,7 @@ class DBConverter
         $creature_template_addon->standState = $stand_state;
         unset($creature_template_addon->bytes1);
         unset($creature_template_addon->bytes2);
+        unset($creature_template_addon->MountCreatureID);
 
         if ($creature_template_addon->path_id)
             $creature_template_addon->path_id = $this->ImportWaypoints(0, $creature_template_addon->path_id, false);
@@ -1094,7 +1095,7 @@ class DBConverter
         // copy TC one and make some arrangements
         unset($creature_template_movement->InteractionPauseTimer);
         
-		$this->DeleteLKCreatureEntry("creature_template_movement", "entry", null, $creature_id);
+		$this->DeleteLKCreatureEntry("creature_template_movement", "CreatureId", null, $creature_id);
 		array_push($this->sunStore->creature_template_movement, $creature_template_movement);
 		fwrite($this->file, WriteObject($this->conn, "creature_template_movement", $creature_template_movement)); 
     }
@@ -1171,11 +1172,15 @@ class DBConverter
 		FlushWrite($this->file, $this->conn);
     }
 
-	function ImportCreatureTemplate(int $creature_id, bool $force = true)
+	// used to check what's freshly imported and avoid some circular import issue
+	private $just_imported_creatures = [];
+
+	function ImportCreatureTemplate(int $creature_id, bool $force = false)
 	{
 		if (CheckAlreadyImported($creature_id))
 			return;
 
+		array_push($this->just_imported_creatures, $creature_id);
         $this->LoadTable("creature_template");
 
 		$creature_template = FindFirst($this->tcStore->creature_template, "entry", $creature_id);
@@ -1183,15 +1188,10 @@ class DBConverter
 			throw new ImportException("Trying to import non existing TLK creature template {$creature_id}");
 
 		$sun_results = FindAll($this->sunStore->creature_template, "entry", $creature_id);
-		if (!empty($sun_results))
-        {
-            if ($force)
-                RemoveAny($this->sunStore->creature_template, "entry", $creature_id);
-            else
-                throw new ImportException("Trying to import already existing creature template {$creature_id}");
-        }
+		if (!empty($sun_results) && !$force)
+			throw new ImportException("Trying to import already existing creature template {$creature_id}");
 
-        // copy TC one and make some arrangements
+        // use TC entry copy and make some arrangements
 		$creature_template->patch = 5;
         unset($creature_template->import);
         unset($creature_template->movementId);
@@ -1204,16 +1204,16 @@ class DBConverter
         $creature_template->skinloot = $creature_template->skinloot ? $this->ImportLootTemplate("skinning_loot_template", $creature_template->skinloot) : null;
         $creature_template->gossip_menu_id = $creature_template->gossip_menu_id ? $this->CreateMenu($creature_template->gossip_menu_id) : null;
 
+		$this->DeleteLKCreatureEntry("creature_template", "entry", "patch", $creature_id);
+		array_push($this->sunStore->creature_template, $creature_template);
+		fwrite($this->file, WriteObject($this->conn, "creature_template", $creature_template)); 
+		
         $this->ImportCreatureTemplateAddon($creature_id);
         $this->ImportCreatureTemplateMovement($creature_id);
         $this->ImportCreatureTemplateResistance($creature_id);
         $this->ImportCreatureTemplateSpell($creature_id);
         
         $this->ImportCreatureSmartAI($creature_id);
-
-		$this->DeleteLKCreatureEntry("creature_template", "entry", "patch", $creature_id);
-		array_push($this->sunStore->creature_template, $creature_template);
-		fwrite($this->file, WriteObject($this->conn, "creature_template", $creature_template)); 
 	}
 
     function ImportCreatureSmartAI(int $creature_id)
@@ -1268,6 +1268,9 @@ class DBConverter
 
 		$this->timelol("CIC");
 
+		if (in_array($creature_id, $this->just_imported_creatures))
+			return;
+
 		echo "Importing SmartAI for referenced summon/target creature id {$creature_id}, "; //... continue this line later
 		$sun_results = FindAll($this->sunStore->creature_template, "entry", $creature_id);
 		if (!empty($sun_results)) {
@@ -1280,10 +1283,13 @@ class DBConverter
                 else {
                     if ($this->smart_import_contagious || in_array($sun_script_name, $this->force_import)) {
                         echo "it currently had AIName '{$sun_ai_name}' and ScriptName '{$sun_script_name}'." . PHP_EOL;
+						// then just proceed
                     } else {
                         echo PHP_EOL;
-						if (!CheckIdentical($this->sunStore->smart_scripts, $this->tcStore->smart_scripts, "entryorguid", $creature_id, "SortSmartAI"))
-                        	throw new ImportException("This would replace a creature which already has a script ({$sun_ai_name}/{$sun_script_name}), no import.", false);
+						if (CheckIdentical($this->sunStore->smart_scripts, $this->tcStore->smart_scripts, "entryorguid", $creature_id, "SortSmartAI"))
+							return;
+						else
+                        	throw new ImportException("This would replace a creature (id: {$creature_id}) which already has a script ({$sun_ai_name}/{$sun_script_name}), no import.", false);
                     }
                 }
             }
@@ -1368,10 +1374,10 @@ class DBConverter
 		if (FindFirst($this->tcStore->creature, "guid", $spawn_id) === null)
 			throw new ImportException("Smart TC trying to target a non existing creature guid {$spawn_id}... this is a tc db error. Ignoring.", false);
 
-		if (FindFirst($this->tcStore->creature, "spawnID", $spawn_id) !== null)
+		if (FindFirst($this->sunStore->creature, "spawnID", $spawn_id) !== null)
 			return; //already present
 
-		LogWarning("Trying to use creature spawn_id {$spawn_id} existing only on TC, importing it now.");
+		LogWarning("Trying to use creature spawnID {$spawn_id} existing only on TC, importing it now.");
 		$this->ImportTCCreature($spawn_id, 5, 10);
 		$this->HandleFormations();
 	}
@@ -1384,10 +1390,10 @@ class DBConverter
 		if (FindFirst($this->tcStore->gameobject, "guid", $spawn_id) === null)
 			throw new ImportException("Smart TC trying to target a non existing gob guid {$spawn_id} on their own db... this is a tc db error. Ignoring.");
 
-		if (FindFirst($this->tcStore->gameobject, "spawnID", $spawn_id) !== null)
+		if (FindFirst($this->sunStore->gameobject, "spawnID", $spawn_id) !== null)
 			return; //already present
 		
-		LogWarning("Trying to use target a gob spawn_id {$spawn_id} existing only on TC, importing it now.");
+		LogWarning("Trying to use target a gob spawnID {$spawn_id} existing only on TC, importing it now.");
 		$this->ImportTCGameObject($spawn_id, 5, 10);
 	}
 
@@ -1481,9 +1487,9 @@ class DBConverter
 		else if ($gameobject_id)
 		{
 			try {
-				$this->ImportReferencedGameObjectSmart($gob_id, $patch, false);
+				$this->ImportReferencedGameObjectSmart($gameobject_id, $patch, false);
 			} catch (ImportException $e) {
-				throw new ImportException("importing gob smart {$gob_id} with error: {$e->getMessage()}", $e->_error);
+				throw new ImportException("importing gob smart {$gameobject_id} with error: {$e->getMessage()}", $e->_error);
 			}
 			return array(SmartSourceType::gameobject, $gameobject_id);
 		}
@@ -1633,9 +1639,8 @@ class DBConverter
 						try {
 							$this->CreateCreatureText($creature_id);
 						} catch (ImportException $e) {
-							LogException($e, "Failed to import text talk with target {$sun_smart_entry->target_type} for entry {$original_entry} {$tc_entry} id {$sun_smart_entry->id}: {$e->getMessage()}");
-                            assert(false);
-							continue 2;
+							LogError($e, "Failed to import text talk with target {$sun_smart_entry->target_type} for entry {$original_entry} {$tc_entry} id {$sun_smart_entry->id}: {$e->getMessage()}");
+							//continue 2; // continue importing, even if it's not working at least we'll see the event and that some talk was intended there
 						}
 					}
 					break;
@@ -2146,7 +2151,7 @@ class DBConverter
 		}
 	}
 
-	private $delayedFormationsImports = "";
+	private $delayed_formations_imports = "";
 	
 	function ImportFormation(int $guid)
 	{
@@ -2197,8 +2202,8 @@ class DBConverter
 			if ($sun_formation->leaderGUID == $sun_formation->memberGUID)
 				$sun_formation->leaderGUID = "NULL"; //special on SUN as well (only do that for the WriteObject, not for the store)
 			
-			$this->delayedFormationsImports .= "DELETE FROM creature_formations WHERE memberGUID = {$sun_formation->memberGUID};" . PHP_EOL;
-			$this->delayedFormationsImports .= WriteObject($this->conn, "creature_formations", $sun_formation);
+			$this->delayed_formations_imports .= "DELETE FROM creature_formations WHERE memberGUID = {$sun_formation->memberGUID};" . PHP_EOL;
+			$this->delayed_formations_imports .= WriteObject($this->conn, "creature_formations", $sun_formation);
 		}
 	}
 
@@ -2261,8 +2266,7 @@ class DBConverter
 			return;
 		
 		$tc_creature = FindFirst($this->tcStore->creature, "guid", $spawn_id);
-		$tc_creature_addon = FindFirst($this->tcStore->creature_addon, "guid", $spawn_id);
-		
+
 		if (IsTLKCreature($tc_creature->id))
 			if ($patch_min < 5)
 				$patch_min = 5;
@@ -2306,6 +2310,7 @@ class DBConverter
 		fwrite($this->file, WriteObject($this->conn, "creature_entry", $sun_creature_entry));
 		
 		//create creature_addon
+		$tc_creature_addon = FindFirst($this->tcStore->creature_addon, "guid", $spawn_id);
 		if ($tc_creature_addon) {
 			$path_id = $tc_creature_addon->path_id;
 			if ($path_id) 
@@ -2406,15 +2411,15 @@ class DBConverter
 		$this->DeleteSunGameObjectsInMap($creature_id, $tc_guids);
 	}
 
-	//Write formations stored in $this->delayedFormationsImports
+	//Write formations stored in $this->delayed_formations_imports
 	function HandleFormations()
 	{
-		if (!$this->delayedFormationsImports)
+		if (!$this->delayed_formations_imports)
 			return;
 		
 		LogDebug("Formations");
-		fwrite($this->file, $this->delayedFormationsImports);
-		$this->delayedFormationsImports = "";
+		fwrite($this->file, $this->delayed_formations_imports);
+		$this->delayed_formations_imports = "";
 	}
 	
 	function ImportGameObjectTemplate($id)

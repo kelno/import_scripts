@@ -103,10 +103,13 @@ function CheckIdenticalObject(&$objectA, &$objectB) : bool
         return false;
     
     foreach ($objectA as $keyA => &$valueA)
+	{
+		if ($keyA == "comment") // always ignore fields with this name
+			continue;
         if (property_exists($objectB, $keyA))
             if ($valueA != $objectB->$keyA)
                 return false;
-            
+	}       
     return true;
 }
 
@@ -273,7 +276,7 @@ function ConvertSpawnGroup(int &$id, int $guid) : int
 
 function IsTLKMap(int $map_id) : bool
 {
-	return $map_id > 568; //First TLK map? Not sure about id here
+	return $map_id >= 571 && $map_id != 572 && $map_id != 580 && $map_id != 585; //First TLK map? Not sure about id here
 }
 
 function IsTLKCreature(int $creature_id) : bool

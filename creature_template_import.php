@@ -19,7 +19,7 @@ $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $query = "SELECT tc.entry 
 FROM ${sunWorld}.creature_template sun 
 RIGHT JOIN ${tcWorld}.creature_template tc ON tc.entry = sun.entry 
-WHERE sun.entry IS NULL OR (sun.patch >= 5 AND sun.entry IS NULL OR sun.entry NOT IN (SELECT entry FROM ${sunWorld}.creature_template WHERE patch = 0))
+WHERE sun.entry IS NULL OR (sun.patch >= 5 AND sun.entry NOT IN (SELECT entry FROM ${sunWorld}.creature_template WHERE patch = 0))
 ORDER BY tc.entry
 ";
 
@@ -34,7 +34,7 @@ foreach($results as &$v) {
     echo "Importing creature template id {$v['entry']} (${i} of ${size})" .PHP_EOL;
 	fwrite($file, "-- Importing creature template id {$v['entry']}" . PHP_EOL);
 	$creature_id = $v['entry'];
-    $converter->ImportCreatureTemplate($creature_id);
+    $converter->ImportCreatureTemplate($creature_id, true);
 	
 	fwrite($file, PHP_EOL . PHP_EOL);
     ++$i;
