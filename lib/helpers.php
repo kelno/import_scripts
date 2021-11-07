@@ -1,27 +1,48 @@
 <?php
 
+static $prepared_objects = array();
+static $prepared_objects_target_table = null;
+function BatchWrite(&$file, &$conn, $table_name, &$object)
+{
+	global $prepared_objects, $prepared_objects_target_table;
+
+	if ($prepared_objects_target_table !== null && !empty($prepared_objects) && $prepared_objects_target_table != $table_name)
+		FlushWrite($file, $conn);
+
+	$prepared_objects_target_table = $table_name;
+	array_push($prepared_objects, $object);
+}
+
+function FlushWrite(&$file, &$conn)
+{
+	global $prepared_objects, $prepared_objects_target_table;
+	fwrite($file, WriteObjects($conn, $prepared_objects_target_table, $prepared_objects)); 
+	$prepared_objects = [];
+	$prepared_objects_target_table = null;
+}
+
 //Convert object into insert query
-function WriteObject(&$conn, string $tableName, &$object) : string
+function WriteObject(&$conn, string $table_name, &$object) : string
 {
 	$array = [ $object ];
-	return WriteObjects($conn, $tableName, $array);
+	return WriteObjects($conn, $table_name, $array);
 }
 
 //Convert objects into insert query
-function WriteObjects(&$conn, string $tableName, array &$objectArray) : string
+function WriteObjects(&$conn, string $table_name, array &$object_array) : string
 {
 	$keys = [];
-	foreach(get_object_vars($objectArray[0]) as $k => $v)
+	foreach(get_object_vars($object_array[0]) as $k => $v)
 		array_push($keys, $k);
 		
 	//no replace or ignore here, error related to inserting already existing sql might help detect faulty logic
-	$sql = "INSERT INTO {$tableName} (";
+	$sql = "INSERT INTO {$table_name} (";
 	foreach($keys as $k)
 		$sql .= "`{$k}`, ";
 
 	$sql = substr_replace($sql, "", -2); //remove last space+comma
 	$sql .= ") VALUES ";
-	foreach($objectArray as $object) {
+	foreach($object_array as $object) {
 		$sql .= "(";
 		foreach(get_object_vars($object) as $v) {
 			if($v === "NULL" || $v === null) {
@@ -43,16 +64,16 @@ function WriteObjects(&$conn, string $tableName, array &$objectArray) : string
 function CheckAlreadyImported(int $id) : bool
 {
 	static $imported = [ ];
-	$callerName = debug_backtrace()[1]['function'];
-	if(array_key_exists($callerName, $imported))
+	$caller_name = debug_backtrace()[1]['function'];
+	if(array_key_exists($caller_name, $imported))
 	{
-		if(in_array($id, $imported[$callerName]))
+		if(in_array($id, $imported[$caller_name]))
 			return true;
 	} else {
-		$imported[$callerName] = [ ];
+		$imported[$caller_name] = [ ];
 	}
 
-	array_push($imported[$callerName], $id);
+	array_push($imported[$caller_name], $id);
 	return false;
 }
 
@@ -262,4 +283,14 @@ function IsTLKCreature(int $creature_id) : bool
 function SortLoot($a, $b) : int
 {
 	return $a->Item > $b->Item;
+}
+
+function SortCreaturetemplateResistance($a, $b) : int
+{
+	return $a->School > $b->School;
+}
+
+function SortCreaturetemplateSpell($a, $b) : int
+{
+	return $a->Index > $b->Index;
 }

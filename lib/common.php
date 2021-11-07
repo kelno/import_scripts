@@ -816,22 +816,22 @@ class DBConverter
 			return;
 		}
         $this->LoadTable("creature_text");
-		
+
 		$this->timelol("CCT", true);
 		$this->timelol("CCT");
-		
+
 		$results = FindAll($this->tcStore->creature_text, "CreatureID", $tc_entry);
 		if (empty($results)) 
 			throw new ImportException("ERROR: Could not find TC creature_text for creature id {$tc_entry}");
-		
+
 		$sql = "DELETE FROM creature_text WHERE CreatureID = {$tc_entry};" . PHP_EOL;
 		fwrite($this->file, $sql);
-		
+
 		$this->timelol("CCT");
 		foreach($results as &$text_entry) {
-			if ($broadcast_id = $text_entry->BroadcastTextId)
-				$this->CheckBroadcast($broadcast_id);
-			
+			if ($text_entry->BroadcastTextId)
+				$this->CheckBroadcast($text_entry->BroadcastTextId);
+
 			array_push($this->sunStore->creature_text, $text_entry);
 			fwrite($this->file, WriteObject($this->conn, "creature_text", $text_entry)); 
 		}
@@ -967,9 +967,7 @@ class DBConverter
                 LogDebug("{$tableName} {$tcLootId}: found already identical loot in our DB at this ID, skipping");
                 // we assume referenced loot template are also the same if they have the same ids
                 return $tcLootId;
-            }
-            else
-            {
+            } else {
                 // generate new id instead
                 $sunId = GetHighest($this->sunStore->$tableName, "Entry") + 1;
             }
@@ -991,9 +989,12 @@ class DBConverter
             $sun_loot->Reference = $tc_loot->Reference ? $this->ImportLootTemplate("reference_loot_template", $tc_loot->Reference) : 0;
             
 			array_push($this->sunStore->$tableName, $sun_loot);
-			fwrite($this->file, WriteObject($this->conn, $tableName, $sun_loot)); 
+			BatchWrite($this->file, $this->conn, $tableName, $sun_loot);
+			//fwrite($this->file, WriteObject($this->conn, $tableName, $sun_loot)); 
 		}
         
+		FlushWrite($this->file, $this->conn);
+
         $this->convertedLootTemplate[$tableName][$tcLootId] = $sunId;
         return $sunId;
     }
@@ -1022,6 +1023,17 @@ class DBConverter
         return $sunFlags;
     }
 
+	function DeleteLKCreatureEntry(string $table_name, string $key_column_name, string $patch_column_name = null, int $creature_id)
+	{
+        $this->LoadTable($table_name);
+		foreach($this->sunStore->$table_name as $key => &$value) {
+			if ($value->$key_column_name == $creature_id && ($patch_column_name === null || $value->$patch_column_name == 5))
+				unset($this->sunStore->$table_name[$key]);
+		}
+		$sql = "DELETE FROM {$table_name} WHERE {$key_column_name} = {$creature_id}" . ($patch_column_name !== null ? " AND {$patch_column_name} = 5" : "") . ";" . PHP_EOL;
+		fwrite($this->file, $sql); 
+	}
+
     function ImportCreatureTemplateAddon(int $creature_id)
     {
 		if (CheckAlreadyImported($creature_id))
@@ -1049,6 +1061,7 @@ class DBConverter
         else
             $creature_template_addon->path_id = null;
         
+		$this->DeleteLKCreatureEntry("creature_template_addon", "entry", "patch", $creature_id);
 		array_push($this->sunStore->creature_template_addon, $creature_template_addon);
 		fwrite($this->file, WriteObject($this->conn, "creature_template_addon", $creature_template_addon)); 
     }
@@ -1065,18 +1078,19 @@ class DBConverter
             return;
 
 		$sun_result = FindFirst($this->sunStore->creature_template_movement, "CreatureId", $creature_id);
-		if ($sun_result != null)
-        {
-            if (CheckIdenticalObject($sun_result, $creature_template_movement))
-            {
+		if ($sun_result != null) {
+            if (CheckIdenticalObject($sun_result, $creature_template_movement)) {
                 LogDebug("creature_template_movement for creature {$creature_id} is already in db and identical.");
                 return;
-            }
+            } else
+				throw new ImportException("Trying to import already existing creature template movement {$creature_id}");
+				// Got diverging data, need a patch column for this table then? Or manual fix. Change DeleteLKCreatureEntry line below if adding a patch column to the table.
         }
-            
+
         // copy TC one and make some arrangements
         unset($creature_template_movement->InteractionPauseTimer);
         
+		$this->DeleteLKCreatureEntry("creature_template_movement", "entry", null, $creature_id);
 		array_push($this->sunStore->creature_template_movement, $creature_template_movement);
 		fwrite($this->file, WriteObject($this->conn, "creature_template_movement", $creature_template_movement)); 
     }
@@ -1088,28 +1102,30 @@ class DBConverter
 
         $this->LoadTable("creature_template_resistance");
         
-        $creature_template_resistance = FindFirst($this->tcStore->creature_template_resistance, "CreatureID", $creature_id);
-		if (empty($creature_template_resistance))
+        $tc_results = FindAll($this->tcStore->creature_template_resistance, "CreatureID", $creature_id);
+		if (empty($tc_results))
             return;
         
-		$sun_result = FindFirst($this->sunStore->creature_template_resistance, "CreatureID", $creature_id);
-		if ($sun_result != null)
-        {
-            if (CheckIdenticalObject($sun_result, $creature_template_resistance))
-            {
-                LogDebug("creature_template_resistance for creature {$creature_id} is already in db and identical.");
-                return;
-            }
-            else
-                throw new ImportException("Trying to import already existing creature template resistance {$creature_id}");  // or replace instead?
+		$sun_results = FindAll($this->sunStore->creature_template_resistance, "CreatureID", $creature_id);
+		if (!empty($sun_results)) {
+			if (CheckIdentical($tc_results, $sun_results, "CreatureID", $creature_id, "SortCreaturetemplateResistance")) {
+				LogDebug("creature_template_resistance for creature {$creature_id} is already in db and identical.");
+				return;
+			} else {
+				throw new ImportException("Trying to import already existing creature template resistance {$creature_id}");
+				// Got diverging data, what should be do there? Just import for patch 5 and not care?
+			}
         }
 
-        // copy TC one and make some arrangements
-        $creature_template_resistance->patch = 5;
-        unset($creature_template_resistance->VerifiedBuild);
-        
-		array_push($this->sunStore->creature_template_resistance, $creature_template_resistance);
-		fwrite($this->file, WriteObject($this->conn, "creature_template_resistance", $creature_template_resistance)); 
+		$this->DeleteLKCreatureEntry("creature_template_resistance", "CreatureID", "patch", $creature_id);
+		foreach($tc_results as $creature_template_resistance) {
+			// we copy TC one and make some arrangements
+			$creature_template_resistance->patch = 5;
+			unset($creature_template_resistance->VerifiedBuild);
+
+			array_push($this->sunStore->creature_template_resistance, $creature_template_resistance);
+			fwrite($this->file, WriteObject($this->conn, "creature_template_resistance", $creature_template_resistance)); 
+		}
     }
     
     function ImportCreatureTemplateSpell(int $creature_id)
@@ -1125,15 +1141,28 @@ class DBConverter
         
 		$sun_results = FindAll($this->sunStore->creature_template_spell, "CreatureID", $creature_id);
 		if (!empty($sun_results))
-			throw new ImportException("Trying to import already existing creature template spells {$creature_id}");
+		{
+			
+			if (CheckIdentical($tc_results, $sun_results, "CreatureID", $creature_id, "SortCreaturetemplateSpell"))
+			{
+				LogDebug("creature_template_spell for creature {$creature_id} is already in db and identical.");
+				return;
+			}
+			else
+				throw new ImportException("Trying to import already existing creature template spells {$creature_id}");
+				// Got diverging data, what should be do there? Just import for patch 5 and not care?
+		}
 
-        // copy TC one and make some arrangements
-		$creature_template_spell = $tc_results[0];
-        $creature_template_spell->patch = 5;
-        unset($creature_template_spell->VerifiedBuild);
-        
-		array_push($this->sunStore->creature_template_spell, $creature_template_spell);
-		fwrite($this->file, WriteObject($this->conn, "creature_template_spell", $creature_template_spell)); 
+		$this->DeleteLKCreatureEntry("creature_template_spell", "CreatureID", "patch", $creature_id);
+		foreach($tc_results as $creature_template_spell)
+		{
+			// copy TC one and make some arrangements
+			$creature_template_spell->patch = 5;
+			unset($creature_template_spell->VerifiedBuild);
+			
+			array_push($this->sunStore->creature_template_spell, $creature_template_spell);
+			fwrite($this->file, WriteObject($this->conn, "creature_template_spell", $creature_template_spell)); 
+		}
     }
 
 	function ImportCreatureTemplate(int $creature_id, bool $force = true)
@@ -1176,6 +1205,7 @@ class DBConverter
         
         $this->ImportCreatureSmartAI($creature_id);
 
+		$this->DeleteLKCreatureEntry("creature_template", "entry", "patch", $creature_id);
 		array_push($this->sunStore->creature_template, $creature_template);
 		fwrite($this->file, WriteObject($this->conn, "creature_template", $creature_template)); 
 	}
@@ -1516,7 +1546,6 @@ class DBConverter
 		
 		$this->timelol("CreateSmartAI");
 		
-		$sun_smart_entries = [];
 		foreach($results as &$smart_entry) {
 			$sun_smart_entry = $smart_entry; //copy
 			$sun_smart_entry->patch_min = 0;
@@ -1759,12 +1788,12 @@ class DBConverter
 			$this->timelol("CreateSmartAI");
 			
 			array_push($this->sunStore->smart_scripts, $sun_smart_entry);
-			array_push($sun_smart_entries, $sun_smart_entry);
+			BatchWrite($this->file, $this->conn, "smart_scripts", $sun_smart_entry);
 			
 			$this->timelol("CreateSmartAI");
 		}
 		
-		fwrite($this->file, WriteObjects($this->conn, "smart_scripts", $sun_smart_entries)); 
+		FlushWrite($this->file, $this->conn);
 		$this->CreateSmartConditions($tc_entry, $source_type);
 		
 		$this->timelol("CreateSmartAI");
