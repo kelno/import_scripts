@@ -110,7 +110,7 @@ function CheckIdenticalObject(&$objectA, &$objectB) : bool
     return true;
 }
 
-// you can provide a function usortCallback to make sure the values are compared in the same order. For example if there is multiple smart entry for a creature, this is needed to make sure they are compared correctly id matching id.
+// you must provide a function usortCallback to make sure the values are compared in the same order. For example if there is multiple smart entry for a creature, this is needed to make sure they are compared correctly id matching id.
 function CheckIdentical(array &$sunContainer, array &$tcContainer, string $keyname, $value, $usortCallback) : bool
 {
 	$sunResults = FindAll($sunContainer, $keyname, $value);
