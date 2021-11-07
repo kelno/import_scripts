@@ -1990,55 +1990,55 @@ class DBConverter
 		RemoveAny($this->sunStore->waypoint_data, "id", $path_id);
 	}
 	
-	function ReplaceWaypoints(int $guid, bool $update_position = true)
+	function ReplaceWaypoints(int $spawn_id, bool $update_position = true)
 	{
         $this->LoadTable("creature");
         $this->LoadTable("creature_addon");
         
-		if (!array_key_exists($guid, $this->tcStore->creature_addon)) {
-			LogError("Trying to replace waypoints for creature {$guid}, but creature has no creature_addon on trinity");
+		$tc_creature_addon = FindFirst($this->tcStore->creature_addon, "guid", $spawn_id);
+		if ($tc_creature_addon === null) {
+			LogError("Trying to replace waypoints for creature {$spawn_id}, but creature has no creature_addon on trinity");
 			return;
 		}
-		$tc_creature_addon = &$this->tcStore->creature_addon[$guid];
 		if ($tc_creature_addon->path_id == 0) {
-			LogError("Trying to replace waypoints for creature {$guid}, but creature has no path_id on trinity");
+			LogError("Trying to replace waypoints for creature {$spawn_id}, but creature has no path_id on trinity");
 			return;
 		}
 		
-		if (array_key_exists($guid, $this->sunStore->creature_addon) && $this->sunStore->creature_addon[$guid]->path_id) 
+		$sun_creature_addon = FindFirst($this->sunStore->creature_addon, "spawnID", $spawn_id);
+		if ($sun_creature_addon !== null && $sun_creature_addon->path_id) 
 		{
-			$usedTimes = $this->GetTimesUsedWaypoints($this->sunStore->creature_addon[$guid]->path_id);
+			$usedTimes = $this->GetTimesUsedWaypoints($sun_creature_addon->path_id);
 			if ($usedTimes == 1) {
-				fwrite($this->file, "UPDATE creature_addon SET path_id = NULL WHERE spawnID = {$guid};" . PHP_EOL);
-				$this->DeleteWaypoints($this->sunStore->creature_addon[$guid]->path_id);
+				fwrite($this->file, "UPDATE creature_addon SET path_id = NULL WHERE spawnID = {$spawn_id};" . PHP_EOL);
+				$this->DeleteWaypoints($sun_creature_addon->path_id);
 			} else if ($usedTimes > 1)
-				fwrite($file, "-- Not deleting waypoint path {$this->sunStore->creature_addon[$guid]->path_id} because it's still used by another creature" . PHP_EOL);
+				fwrite($file, "-- Not deleting waypoint path {$sun_creature_addon->path_id} because it's still used by another creature" . PHP_EOL);
 		}
 		
 		//will often be equal to tc path id, unless it's not free
-		$sun_path_id = $this->ImportWaypoints($guid, $tc_creature_addon->path_id);
+		$sun_path_id = $this->ImportWaypoints($spawn_id, $tc_creature_addon->path_id);
 		if ($sun_path_id === 0)
         {
-			LogError("Trying to replace waypoints for creature {$guid}, but creature has wrong path on trinity");
+			LogError("Trying to replace waypoints for creature {$spawn_id}, but creature has wrong path on trinity");
             return;
         }
 
-		//if (FindFirst($this->sunStore->creature_addon, "spawnID", $guid) === null) {
-		if (array_key_exists($guid, $this->sunStore->creature_addon)) {
-			$this->sunStore->creature_addon[$guid]->path_id = $sun_path_id;
-			fwrite($this->file, "UPDATE creature_addon SET path_id = {$sun_path_id} WHERE spawnID = {$guid};" . PHP_EOL);
+		$sun_creature_addon = &FindFirst($this->sunStore->creature_addon, "spawnID", $spawn_id);
+		if ($sun_creature_addon !== null) {
+			$sun_creature_addon->path_id = $sun_path_id;
+			fwrite($this->file, "UPDATE creature_addon SET path_id = {$sun_path_id} WHERE spawnID = {$spawn_id};" . PHP_EOL);
 		} else {
 			$sun_creature_addon = new stdClass;
-			$sun_creature_addon->spawnID = $guid;
+			$sun_creature_addon->spawnID = $spawn_id;
 			$sun_creature_addon->path_id = $sun_path_id;
-			//array_push($this->sunStore->creature_addon, $sun_creature_addon);
-			$this->sunStore->creature_addon[$guid] = $sun_creature_addon;
+			array_push($this->sunStore->creature_addon, $sun_creature_addon);
 			fwrite($this->file, WriteObject($this->conn, "creature_addon", $sun_creature_addon));
 		}
 		
 		if ($update_position)
 		{
-			$tc_creature = FindFirst($this->tcStore->creature, "guid", $guid);
+			$tc_creature = FindFirst($this->tcStore->creature, "guid", $spawn_id);
 			foreach($this->sunStore->creature as &$creature) 
 			{
 				if (  $creature->position_x != $tc_creature->position_x
@@ -2049,7 +2049,7 @@ class DBConverter
 					$creature->position_y  = $tc_creature->position_y;
 					$creature->position_z  = $tc_creature->position_z;
 					$creature->orientation = $tc_creature->orientation;
-					fwrite($this->file, "UPDATE creature SET position_x = {$tc_creature->position_x}, position_y = {$tc_creature->position_y}, position_z = {$tc_creature->position_z}, orientation = {$tc_creature->orientation} WHERE spawnID = {$guid};" . PHP_EOL);
+					fwrite($this->file, "UPDATE creature SET position_x = {$tc_creature->position_x}, position_y = {$tc_creature->position_y}, position_z = {$tc_creature->position_z}, orientation = {$tc_creature->orientation} WHERE spawnID = {$spawn_id};" . PHP_EOL);
 				}
 			}
 		}
@@ -2324,7 +2324,7 @@ class DBConverter
 			$sun_creature_addon->auras = $tc_creature_addon->auras ? $tc_creature_addon->auras : 'NULL';
 			//could be improved here: check auras with spell_template, some are TLK only
 			
-			$this->sunStore->creature_addon[$spawn_id] = $sun_creature_addon;
+			array_push($this->sunStore->creature_addon, $sun_creature_addon);
 			fwrite($this->file, WriteObject($this->conn, "creature_addon", $sun_creature_addon));
 		}
 		
