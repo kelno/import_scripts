@@ -132,6 +132,9 @@ function FindAll(array &$container, string $keyname, $value) : array
 {
 	$results = [];
 	
+	if ($container === null)
+		return $results;
+
 	foreach(array_keys($container) as &$key)
 		if($container[$key]->$keyname == $value)
 			array_push($results, $container[$key]);
@@ -141,6 +144,9 @@ function FindAll(array &$container, string $keyname, $value) : array
 
 function FindFirst(array &$container, string $keyname, $value)
 {
+	if ($container === null)
+		return null;
+
 	foreach(array_keys($container) as &$key)
 		if($container[$key]->$keyname == $value)
             return $container[$key];
@@ -268,11 +274,6 @@ function ConvertSpawnGroup(int &$id, int $guid) : int
 function IsTLKMap(int $map_id) : bool
 {
 	return $map_id > 568; //First TLK map? Not sure about id here
-}
-
-function IsTLKGameObject(int $gob_id) : bool
-{
-	return $gob_id > 211084 AND $gob_id < 300000;  //not exact... its a bit interwined at the end of the range
 }
 
 function IsTLKCreature(int $creature_id) : bool
