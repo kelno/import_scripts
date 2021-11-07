@@ -1124,8 +1124,9 @@ class DBConverter
 			unset($creature_template_resistance->VerifiedBuild);
 
 			array_push($this->sunStore->creature_template_resistance, $creature_template_resistance);
-			fwrite($this->file, WriteObject($this->conn, "creature_template_resistance", $creature_template_resistance)); 
+			BatchWrite($this->file, $this->conn, "creature_template_resistance", $creature_template_resistance);
 		}
+		FlushWrite($this->file, $this->conn);
     }
     
     function ImportCreatureTemplateSpell(int $creature_id)
@@ -1161,8 +1162,9 @@ class DBConverter
 			unset($creature_template_spell->VerifiedBuild);
 			
 			array_push($this->sunStore->creature_template_spell, $creature_template_spell);
-			fwrite($this->file, WriteObject($this->conn, "creature_template_spell", $creature_template_spell)); 
+			BatchWrite($this->file, $this->conn, "creature_template_spell", $creature_template_spell);
 		}
+		FlushWrite($this->file, $this->conn);
     }
 
 	function ImportCreatureTemplate(int $creature_id, bool $force = true)
@@ -1937,8 +1939,10 @@ class DBConverter
 			}
 				
 			array_push($this->sunStore->waypoint_scripts, $sun_waypoint_script);
-			fwrite($this->file, WriteObject($this->conn, "waypoint_scripts", $sun_waypoint_script));
+			BatchWrite($this->file, $this->conn, "waypoint_scripts", $sun_waypoint_script);
 		}
+		
+		FlushWrite($this->file, $this->conn);
 		
 		return $sun_action_id;
 	}
@@ -2084,8 +2088,10 @@ class DBConverter
 				$sun_waypoint->action = 'NULL';
 			
 			array_push($this->sunStore->waypoint_data, $sun_waypoint);
-			fwrite($this->file, WriteObject($this->conn, "waypoint_data", $sun_waypoint));
+			
+			BatchWrite($this->file, $this->conn, "waypoint_data", $sun_waypoint);
 		}
+		FlushWrite($this->file, $this->conn);
 		
 		if ($includeMovementTypeUpdate && $guid != 0) {
 			$this->sunStore->creature[$guid]->MovementType = 2;
