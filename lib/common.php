@@ -316,10 +316,10 @@ class DBConverter
 		$sun_text = substr($sun_text->Text, 0, 255);
 		$tc_text = substr($tc_text->Text, 0, 255);
 		if (levenshtein($sun_text, $tc_text) > 2) { //allow very similar strings
-		//if ($sun_results != $tc_results) { //does this work okay? This is supposed to compare keys + values, but we don't care about keys.
+
 			//var_dump($sun_results);
 			//var_dump($tc_results);
-			throw new ImportException("TC and SUN containers have different results for table broadcast_text and value {$value}");
+			LogError("TC and SUN containers have different results for table broadcast_text and value {$value}");
 		}
 		
 		//OK
@@ -1460,7 +1460,7 @@ class DBConverter
 				break;
 			case SmartTarget::GAMEOBJECT_GUID:
 				$spawn_id = $sun_smart_entry->target_param1;
-				$tc_gob = FindFirst($this->tcStore->gameobject, "guid", spawn_id);
+				$tc_gob = FindFirst($this->tcStore->gameobject, "guid", $spawn_id);
 				if ($tc_gob === null)
 					throw new ImportException("SCould not find TC gameobject with spawn_id {$spawn_id} for target GAMEOBJECT_GUID. This is a TC error.");
 
@@ -2337,12 +2337,12 @@ class DBConverter
 		if (array_key_exists($spawn_id, $this->tcStore->game_event_creature)) {
 			$sun_gec = new stdClass;
             //TODO: tc event might not exists... but if it exists we assume it's the right one, we made some id sync for that before
-			$sun_gec->event = $this->tcStore->game_event_creature[$spawnId]->eventEntry;
+			$sun_gec->event = $this->tcStore->game_event_creature[$spawn_id]->eventEntry;
 			$sun_gec->spawnId = $spawn_id;
-			$this->sunStore->game_event_creature[$spawnId] = $sun_gec;
+			$this->sunStore->game_event_creature[$spawn_id] = $sun_gec;
 			fwrite($this->file, WriteObject($this->conn, "game_event_creature", $sun_gec));
 		}
-		
+
 		$this->ImportSpawnGroup($spawn_id, true);
 		$this->ImportFormation($spawn_id);
 		$this->ImportPool($spawn_id, true);
@@ -2352,10 +2352,10 @@ class DBConverter
 	{
 		if (CheckAlreadyImported($creature_id))
 			return;
-			
+
         $this->LoadTable("creature");
         $this->LoadTable("creature_entry");
-        
+
 		$results = FindAll($this->tcStore->creature, "id", $creature_id);
 		if (empty($results))
 			throw new ImportException("Failed to find any TC creature with id {$creature_id}");
@@ -2374,20 +2374,20 @@ class DBConverter
 		$this->DeleteSunCreatures($creature_id, $tc_guids);
 		$this->HandleFormations();
 	}
-	
+
 	function CreateReplaceMap(int $map_id, int $patch_min = 0, int $patch_max = 10)
 	{
 		if (CheckAlreadyImported($map_id))
 			return;
-			
+
         $this->LoadTable("creature");
         $this->LoadTable("gameobject");
-        
+
 		//handle creatures
 		$results = FindAll($this->tcStore->creature, "map", $map_id);
 		if (empty($results)) 
 			throw new ImportException("Failed to find any TC creature in map {$map_id}");
-		
+
 		$tc_guids = [];
 		foreach($results as &$tc_creature) {
 			array_push($tc_guids, $tc_creature->guid);
@@ -2396,7 +2396,7 @@ class DBConverter
 		}
 		$this->DeleteSunCreaturesInMap($map_id, $tc_guids);
 		$this->HandleFormations();
-		
+
 		//handle gameobjects
 		$results = FindAll($this->tcStore->gameobject, "map", $map_id);
 		if (empty($results))
