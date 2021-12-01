@@ -24,6 +24,8 @@ ORDER BY tc.entry
 ";
 
 // MAIN
+fwrite($file, "SET FOREIGN_KEY_CHECKS=0;" . PHP_EOL);
+    
 $stmt = $conn->query($query);
 $stmt->setFetchMode(PDO::FETCH_ASSOC);
 
@@ -40,6 +42,8 @@ foreach($results as &$v) {
     ++$i;
     //break; //testing
 }
+
+fwrite($file, "SET FOREIGN_KEY_CHECKS=1;" . PHP_EOL); // actually useless because this is set per session and it will be close afterwards, but good practice
 
 fclose($file);
 
