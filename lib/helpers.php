@@ -122,7 +122,7 @@ function CheckIdentical(array &$sunContainer, array &$tcContainer, string $keyna
 	if (count($sunResults) != count($tcResults))
 		return false;
     
-    $sortCallBack = function (&$a, &$b) use (&$sortOnKey) {
+    $sortCallBack = function ($a, $b) use (&$sortOnKey) {
         return $a->$sortOnKey <=> $b->$sortOnKey;
     };
 	usort($sunResults, $sortCallBack);

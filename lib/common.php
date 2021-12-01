@@ -2368,7 +2368,7 @@ class DBConverter
 			$sun_gec = new stdClass;
             //TODO: tc event might not exists... but if it exists we assume it's the right one, we made some id sync for that before
 			$sun_gec->event = $this->tcStore->game_event_creature[$spawn_id]->eventEntry;
-			$sun_gec->spawnId = $spawn_id;
+			$sun_gec->guid = $spawn_id;
 			$this->sunStore->game_event_creature[$spawn_id] = $sun_gec;
 			fwrite($this->file, WriteObject($this->conn, "game_event_creature", $sun_gec));
 		}
