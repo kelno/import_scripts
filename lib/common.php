@@ -315,12 +315,17 @@ class DBConverter
 		if ($tc_text === null)
 			throw new ImportException("Checked for broadcast existence but TC has no value?");
 		
-		$sun_text = substr($sun_text->Text, 0, 255);
-		$tc_text = substr($tc_text->Text, 0, 255);
-		if (levenshtein($sun_text, $tc_text) > 2) { //allow very similar strings
+        // ignore lines returns and spaces differences
+        $sun_text_trim = preg_replace('/\s+/', '', trim($sun_text->Text));
+        $sun_text_trim = preg_replace('/\s+/', '', trim($tc_text->Text));
+        
+		$sun_text_trim = substr($sun_text_trim, 0, 255);
+		$sun_text_trim = substr($sun_text_trim, 0, 255);
+        
+		if (levenshtein($sun_text_trim, $sun_text_trim) > 2) { //allow very similar strings
 
-			//var_dump($sun_results);
-			//var_dump($tc_results);
+			// var_dump($sun_text_trim);
+			// var_dump($sun_text_trim);
 			LogError("TC and SUN containers have different results for table broadcast_text and value {$value}");
 		}
 		
