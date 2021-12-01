@@ -44,7 +44,7 @@ class ImportException extends Exception
 $debug = false;
 $errors = 0;
 $warnings = 0;
-function LogError($msg)
+function LogError(string $msg)
 {
 	global $errors, $file;
 
