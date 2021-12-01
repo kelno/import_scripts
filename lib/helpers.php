@@ -21,14 +21,14 @@ function FlushWrite(&$file, &$conn)
 	$prepared_objects_target_table = null;
 }
 
-//Convert object into insert query
+// Convert object into insert query
 function WriteObject(&$conn, string $table_name, &$object) : string
 {
 	$array = [ $object ];
 	return WriteObjects($conn, $table_name, $array);
 }
 
-//Convert objects into insert query
+// Convert objects into insert query
 function WriteObjects(&$conn, string $table_name, array &$object_array) : string
 {
 	$keys = [];
@@ -37,15 +37,15 @@ function WriteObjects(&$conn, string $table_name, array &$object_array) : string
 		
 	//no replace or ignore here, error related to inserting already existing sql might help detect faulty logic
 	$sql = "INSERT INTO {$table_name} (";
-	foreach($keys as $k)
+	foreach ($keys as $k)
 		$sql .= "`{$k}`, ";
 
 	$sql = substr_replace($sql, "", -2); //remove last space+comma
 	$sql .= ") VALUES ";
-	foreach($object_array as $object) {
+	foreach ($object_array as $object) {
 		$sql .= "(";
-		foreach(get_object_vars($object) as $v) {
-			if($v === "NULL" || $v === null) {
+		foreach (get_object_vars($object) as $v) {
+			if ($v === "NULL" || $v === null) {
 				$sql .= "NULL, ";
 			} else {
 				$v = $conn->quote($v);
@@ -65,9 +65,9 @@ function CheckAlreadyImported(int $id) : bool
 {
 	static $imported = [ ];
 	$caller_name = debug_backtrace()[1]['function'];
-	if(array_key_exists($caller_name, $imported))
+	if (array_key_exists($caller_name, $imported))
 	{
-		if(in_array($id, $imported[$caller_name]))
+		if (in_array($id, $imported[$caller_name]))
 			return true;
 	} else {
 		$imported[$caller_name] = [ ];
@@ -119,14 +119,15 @@ function CheckIdentical(array &$sunContainer, array &$tcContainer, string $keyna
 	$sunResults = FindAll($sunContainer, $keyname, $value);
 	$tcResults = FindAll($tcContainer, $keyname, $value);
 
-    $sortCallBack = function ($a, $b) use (&$sortOnKey) {
+	if (count($sunResults) != count($tcResults))
+		return false;
+    
+    $sortCallBack = function (&$a, &$b) use (&$sortOnKey) {
         return $a->$sortOnKey <=> $b->$sortOnKey;
     };
 	usort($sunResults, $sortCallBack);
 	usort($tcResults, $sortCallBack);
 
-	if (count($sunResults) != count($tcResults))
-		return false;
 	for ($i = 0; $i < count($sunResults); ++$i)
 		if (!CheckIdenticalObject($sunResults[$i], $tcResults[$i]))
 			return false;

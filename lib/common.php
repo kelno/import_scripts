@@ -109,11 +109,12 @@ class DBStore
 	public $creature_template_resistance = null; //key has NO MEANING
 	public $creature_template_spell = null; //key has NO MEANING
 	public $creature_text = null; //key has NO MEANING
+	public $game_event = null; //key is entry
 	public $game_event_creature = null; //key is spawnID
+	public $game_event_gameobject = null; //key is spawnID
 	public $gameobject = null; //key has NO MEANING
 	public $gameobject_addon = null; //key is spawnID
 	public $gameobject_entry = null; //key has NO MEANING
-	public $game_event_gameobject = null; //key is spawnID
 	public $gameobject_template = null;  //key is entry
 	public $gossip_menu = null; //key has NO MEANING
 	public $gossip_menu_option = null; //key has NO MEANING
@@ -233,6 +234,7 @@ $loadTableInfos["creature_template_movement"] = new LoadTableInfo();
 $loadTableInfos["creature_template_resistance"] = new LoadTableInfo();
 $loadTableInfos["creature_template_spell"] = new LoadTableInfo();
 $loadTableInfos["creature_text"] = new LoadTableInfo();
+$loadTableInfos["game_event"] = new LoadTableInfo("entry", "eventEntry");
 $loadTableInfos["game_event_creature"] = new LoadTableInfo("guid", "guid");
 $loadTableInfos["game_event_gameobject"] = new LoadTableInfo("guid", "guid");
 $loadTableInfos["gameobject"] = new LoadTableInfo();
@@ -1519,6 +1521,7 @@ class DBConverter
         $this->LoadTable("creature_text");
         $this->LoadTable("creature");
         $this->LoadTable("broadcast_text");
+        $this->LoadTable("game_event");
         
 		$this->timelol("CreateSmartAI", true);
 		$this->timelol("CreateSmartAI");
@@ -1717,12 +1720,20 @@ class DBConverter
 						continue 2;
 					}
 					break;
-				case SmartAction::GAME_EVENT_STOP:
-				case SmartAction::GAME_EVENT_START:
 				case SmartAction::LOAD_EQUIPMENT:
 				case SmartAction::SPAWN_SPAWNGROUP:
 				case SmartAction::DESPAWN_SPAWNGROUP:
 					throw new ImportException("NYI {$tc_entry} action {$sun_smart_entry->action_type}");
+				case SmartAction::GAME_EVENT_STOP:
+				case SmartAction::GAME_EVENT_START:
+                    $event_id = $sun_smart_entry->action_param1;
+                    $sun_game_event = FindFirst($this->sunStore->game_event, "entry", $sun_smart_entry->action_param1);
+                    if ($sun_game_event === null)
+                    {
+                        LogError("Smart TC {$tc_entry} {$sun_smart_entry->id} has unknown event {$event_id}");
+                        //continue 2;
+                    }
+                    break;
 				case SmartAction::START_CLOSEST_WAYPOINT:
                     $wp_ids = array($sun_smart_entry->action_param1, $sun_smart_entry->action_param3, $sun_smart_entry->action_param4, $sun_smart_entry->action_param5, $sun_smart_entry->action_param6);
                     foreach($wp_ids as $wp_id) {
