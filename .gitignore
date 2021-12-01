@@ -1,2 +1,3 @@
 *.sql
 backups/*
+config.php
