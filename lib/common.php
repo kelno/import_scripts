@@ -925,11 +925,13 @@ class DBConverter
 		if (empty($results)) 
 			throw new ImportException("Could not find TC waypoints {$path_id}");
 
+        if (CheckIdenticalTest($this->sunStore->waypoints, $this->tcStore->waypoints, "entry", $path_id, "pointid")) {
+			LogDebug("Smart Waypoints {$path_id} are already the same on sun");
+            return;
+        }
 		$sun_results = FindAll($this->sunStore->waypoints, "entry", $path_id);
 		if (!empty($sun_results)) {
-			if ($sun_results != $results) //does this work okay? This is supposed to compare keys + values, but we don't care about keys.
-				echo "TC and SUN table have different smart waypoints for path_id {$path_id}, overwritting with TC ones ". PHP_EOL;
-
+            echo "TC and SUN table have different smart waypoints for path_id {$path_id}, overwritting with TC ones.". PHP_EOL;
 			$sql = "DELETE FROM waypoints WHERE entry = {$path_id};" . PHP_EOL;
 			fwrite($this->file, $sql);
 			RemoveAny($this->sunStore->waypoints, "entry", $path_id);
@@ -964,7 +966,7 @@ class DBConverter
         
         if (FindFirst($this->sunStore->$table_name, "Entry", $tc_loot_id) !== null) {
             // Do we have an already existing loot at this id with same values?
-            if (CheckIdentical($this->sunStore->$table_name, $this->tcStore->$table_name, "Entry", $tc_loot_id, "SortLoot")) {
+            if (CheckIdentical($this->sunStore->$table_name, $this->tcStore->$table_name, "Entry", $tc_loot_id, "Item")) {
                 LogDebug("{$table_name} {$tc_loot_id}: found already identical loot in our DB at this ID, skipping");
                 // we assume referenced loot template are also the same if they have the same ids
                 return $tc_loot_id;
@@ -1113,7 +1115,7 @@ class DBConverter
         
 		$sun_results = FindAll($this->sunStore->creature_template_resistance, "CreatureID", $creature_id);
 		if (!empty($sun_results)) {
-			if (CheckIdentical($tc_results, $sun_results, "CreatureID", $creature_id, "SortCreaturetemplateResistance")) {
+			if (CheckIdentical($tc_results, $sun_results, "CreatureID", $creature_id, "School")) {
 				LogDebug("creature_template_resistance for creature {$creature_id} is already in db and identical.");
 				return;
 			} else {
@@ -1149,7 +1151,7 @@ class DBConverter
 		if (!empty($sun_results))
 		{
 			
-			if (CheckIdentical($tc_results, $sun_results, "CreatureID", $creature_id, "SortCreaturetemplateSpell"))
+			if (CheckIdentical($tc_results, $sun_results, "CreatureID", $creature_id, "Index"))
 			{
 				LogDebug("creature_template_spell for creature {$creature_id} is already in db and identical.");
 				return;

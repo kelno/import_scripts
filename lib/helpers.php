@@ -113,14 +113,17 @@ function CheckIdenticalObject(&$objectA, &$objectB) : bool
     return true;
 }
 
-// you must provide a function usortCallback to make sure the values are compared in the same order. For example if there is multiple smart entry for a creature, this is needed to make sure they are compared correctly id matching id.
-function CheckIdentical(array &$sunContainer, array &$tcContainer, string $keyname, $value, $usortCallback) : bool
+// $sortOnKey: key on which the entries will be compared for sorting. For example if there is multiple smart entry for a creature, this is needed to make sure they are compared correctly id matching id.
+function CheckIdentical(array &$sunContainer, array &$tcContainer, string $keyname, $value, $sortOnKey) : bool
 {
 	$sunResults = FindAll($sunContainer, $keyname, $value);
 	$tcResults = FindAll($tcContainer, $keyname, $value);
 
-	usort($sunResults, $usortCallback);
-	usort($tcResults, $usortCallback);
+    $sortCallBack = function ($a, $b) use (&$sortOnKey) {
+        return $a->$sortOnKey <=> $b->$sortOnKey;
+    };
+	usort($sunResults, $sortCallBack);
+	usort($tcResults, $sortCallBack);
 
 	if (count($sunResults) != count($tcResults))
 		return false;
@@ -282,19 +285,4 @@ function IsTLKMap(int $map_id) : bool
 function IsTLKCreature(int $creature_id) : bool
 {
 	return $creature_id > 2909 && $creature_id < 1000000; // those are customs
-}
-
-function SortLoot($a, $b) : int
-{
-	return $a->Item > $b->Item;
-}
-
-function SortCreaturetemplateResistance($a, $b) : int
-{
-	return $a->School > $b->School;
-}
-
-function SortCreaturetemplateSpell($a, $b) : int
-{
-	return $a->Index > $b->Index;
 }
