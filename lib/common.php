@@ -1717,11 +1717,23 @@ class DBConverter
 					break;
 				case SmartAction::GAME_EVENT_STOP:
 				case SmartAction::GAME_EVENT_START:
-				case SmartAction::START_CLOSEST_WAYPOINT:
 				case SmartAction::LOAD_EQUIPMENT:
 				case SmartAction::SPAWN_SPAWNGROUP:
 				case SmartAction::DESPAWN_SPAWNGROUP:
 					throw new ImportException("NYI {$tc_entry} action {$sun_smart_entry->action_type}");
+				case SmartAction::START_CLOSEST_WAYPOINT:
+                    $wp_ids = array($sun_smart_entry->action_param1, $sun_smart_entry->action_param3, $sun_smart_entry->action_param4, $sun_smart_entry->action_param5, $sun_smart_entry->action_param6);
+                    foreach($wp_ids as $wp_id) {
+                        if ($wp_id != 0) {
+                            try {
+                                $this->CreateSmartWaypoints($wp_id);
+                            } catch (ImportException $e) {
+                                LogException($e, "Failed to create waypoints for entry {$original_entry} {$tc_entry} id {$sun_smart_entry->id}: {$e->getMessage()}");
+                                continue;
+                            }
+                        }
+                    }
+                    break;
 				case SmartAction::RESPAWN_BY_SPAWNID:
 					$shouldKeep = false;
 					$spawnType = $sun_smart_entry->action_param1;
