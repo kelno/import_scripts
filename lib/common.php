@@ -925,7 +925,7 @@ class DBConverter
 		if (empty($results)) 
 			throw new ImportException("Could not find TC waypoints {$path_id}");
 
-        if (CheckIdenticalTest($this->sunStore->waypoints, $this->tcStore->waypoints, "entry", $path_id, "pointid")) {
+        if (CheckIdentical($this->sunStore->waypoints, $this->tcStore->waypoints, "entry", $path_id, "pointid")) {
 			LogDebug("Smart Waypoints {$path_id} are already the same on sun");
             return;
         }
@@ -1231,7 +1231,7 @@ class DBConverter
         
         $this->LoadTable("smart_scripts");
 
-		if (CheckIdentical($this->sunStore->smart_scripts, $this->tcStore->smart_scripts, "entryorguid", $creature_id, "SortSmartAI")) {
+		if (CheckIdentical($this->sunStore->smart_scripts, $this->tcStore->smart_scripts, "entryorguid", $creature_id, "id")) {
 			//echo "Already identical, skipping" . PHP_EOL;
 			LogDebug("SmartAI for creature {$creature_id} is already in db and identical.");
 			return;
@@ -1262,7 +1262,7 @@ class DBConverter
 		$this->timelol("CIC", true);
 		$this->timelol("CIC");
 
-		if (CheckIdentical($this->sunStore->smart_scripts, $this->tcStore->smart_scripts, "entryorguid", $creature_id, "SortSmartAI")) {
+		if (CheckIdentical($this->sunStore->smart_scripts, $this->tcStore->smart_scripts, "entryorguid", $creature_id, "id")) {
 			//echo "Already identical, skipping" . PHP_EOL;
 			LogDebug("SmartAI for creature {$creature_id} is already in db and identical.");
 			return;
@@ -1288,7 +1288,7 @@ class DBConverter
 						// then just proceed
                     } else {
                         echo PHP_EOL;
-						if (CheckIdentical($this->sunStore->smart_scripts, $this->tcStore->smart_scripts, "entryorguid", $creature_id, "SortSmartAI"))
+						if (CheckIdentical($this->sunStore->smart_scripts, $this->tcStore->smart_scripts, "entryorguid", $creature_id, "id"))
 							return;
 						else
                         	throw new ImportException("This would replace a creature (id: {$creature_id}) which already has a script ({$sun_ai_name}/{$sun_script_name}), no import.", false);
@@ -1320,7 +1320,7 @@ class DBConverter
 		if ($this->tcStore->gameobject_template[$gob_id]->AIName != "SmartAI")
 			throw new ImportException("Smart reference a non Smart gameobject {$gob_id}");
 
-		if (CheckIdentical($this->sunStore->smart_scripts, $this->tcStore->smart_scripts, "entryorguid", $gob_id, "SortSmartAI")) {
+		if (CheckIdentical($this->sunStore->smart_scripts, $this->tcStore->smart_scripts, "entryorguid", $gob_id, "id")) {
 			//echo "Already identical, skipping" . PHP_EOL;
 			LogDebug("SmartAI for gob {$gob_id} is already in db and identical.");
 			return;

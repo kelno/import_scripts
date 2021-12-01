@@ -310,8 +310,3 @@ function IsActionIgnoreTarget(int $action_type)
 			return false;
 	}
 }
-
-function SortSmartAI($a, $b) : int
-{
-	return $a->id > $b->id;
-}
