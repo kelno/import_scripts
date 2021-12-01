@@ -1639,7 +1639,7 @@ class DBConverter
 						try {
 							$this->CreateCreatureText($creature_id);
 						} catch (ImportException $e) {
-							LogError($e, "Failed to import text talk with target {$sun_smart_entry->target_type} for entry {$original_entry} {$tc_entry} id {$sun_smart_entry->id}: {$e->getMessage()}");
+							LogException($e, "Failed to import text talk with target {$sun_smart_entry->target_type} for entry {$original_entry} {$tc_entry} id {$sun_smart_entry->id}: {$e->getMessage()}");
 							//continue 2; // continue importing, even if it's not working at least we'll see the event and that some talk was intended there
 						}
 					}
@@ -2523,7 +2523,7 @@ class DBConverter
 		$sun_gameobject->spawntimesecsmax = $tc_gameobject->spawntimesecs;
 		$sun_gameobject->animprogress     = $tc_gameobject->animprogress;
 		$sun_gameobject->state            = $tc_gameobject->state;
-		$sun_gameobject->ScriptName       = $tc_gameobject->ScriptName;
+		$sun_gameobject->ScriptName       = $tc_gameobject->ScriptName; // always empty currently
 		if (IsTLKMap($sun_gameobject->map))
 			$patch_min = 5;
 
