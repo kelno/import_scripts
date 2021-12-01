@@ -2170,9 +2170,6 @@ class DBConverter
 			}
 				
 			$groupId = $result->groupId;
-			if (!ConvertSpawnGroup($groupId, $guid)) //may change groupId
-				continue;
-				
 			$sun_spawn_group = $result; //copy
 			$sun_spawn_group->groupId = $groupId;
 			

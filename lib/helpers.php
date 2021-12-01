@@ -247,40 +247,9 @@ function ConvertPoIIcon(int $icon) : int
 	}
 }
 
-function ConvertSpawnGroup(int &$id, int $guid) : int
-{
-	switch($id)
-	{
-	case 0:
-	case 1:
-	case 2:
-	case 3:
-	case 4:
-		return true;
-	case 10: //onyxia lair
-		$id = 31;
-		return true;
-	case 44: //alar
-		$id = 7;
-		return true;
-	case 45: //void reaver
-		$id = 8;
-		return true;
-	case 46: //solarian
-		$id = 6;
-		return true;
-	case 47: //kael thas:
-		$id = 9;
-		return true;
-	default:
-		echo "Unknown spawn group {$id} for tc guid {$guid}" . PHP_EOL;
-		return false;
-	}
-}
-
 function IsTLKMap(int $map_id) : bool
 {
-	return $map_id >= 571 && $map_id != 572 && $map_id != 580 && $map_id != 585; //First TLK map? Not sure about id here
+	return $map_id >= 571 && $map_id != 572 && $map_id != 580 && $map_id != 585;
 }
 
 function IsTLKCreature(int $creature_id) : bool
