@@ -195,7 +195,7 @@ class DBStore
         return true;
     }
     
-    function FindAllByField(string $table_name, $field_name, &$field_value) : array
+    function &FindAllByField(string $table_name, $field_name, &$field_value) : array
     {
 		$results = [];
 		
@@ -210,7 +210,7 @@ class DBStore
         return $results;
 	}
 
-    function FindAll(string $table_name, $main_key_value) : array
+    function &FindAll(string $table_name, $main_key_value) : array
     {
 		$results = [];
 
@@ -248,17 +248,18 @@ class DBStore
 	}
 
 	// if keyname & value are specified, further filter result with those
-    function FindFirst(string $table_name, $main_key_value, string $keyname = null, $value = null)
+    function &FindFirst(string $table_name, $main_key_value, string $keyname = null, $value = null)
     {
+		$null = null;
         if ($this->$table_name === null)
-            return null;
+            return $null;
 
 		if (!array_key_exists($main_key_value, $this->$table_name))
-			return null;
+			return $null;
 
 		$table_by_main_key = &$this->$table_name[$main_key_value]; // [ Object, Object, ... ]
 		if (empty($table_by_main_key))
-			return null;
+			return $null;
 
 		if ($keyname !== null && $value !== null)
 		{
@@ -269,10 +270,10 @@ class DBStore
 		else
 			return $table_by_main_key[0]; // return first element, whatever it is
 
-        return null;
+        return $null;
     }
     
-    function Insert(string $table_name, &$object, &$main_key_value = null)
+    function Insert(string $table_name, &$object, &$main_key_value)
     {
         assert($this->$table_name !== null);
 		assert($main_key_value !== null);
@@ -311,9 +312,9 @@ $loadTableInfos["creature"] = new LoadTableInfo("spawnID", "guid");
 $loadTableInfos["creature_addon"] = new LoadTableInfo("spawnID", "guid", false, false);
 $loadTableInfos["creature_entry"] = new LoadTableInfo("spawnID", null, false, true);
 $loadTableInfos["creature_equip_template"] = new LoadTableInfo("CreatureID", "CreatureID");
-$loadTableInfos["conditions"] = new LoadTableInfo("id", "id");
+$loadTableInfos["conditions"] = new LoadTableInfo("SourceEntry", "SourceEntry");
 $loadTableInfos["creature_formations"] = new LoadTableInfo("memberGUID", "memberGUID");
-$loadTableInfos["creature_loot_template"] = new LoadTableInfo("entry", "entry");
+$loadTableInfos["creature_loot_template"] = new LoadTableInfo("Entry", "Entry");
 $loadTableInfos["creature_model_info"] = new LoadTableInfo("modelid", "DisplayID");
 $loadTableInfos["creature_summon_groups"] = new LoadTableInfo("summonerId", "summonerId");
 $loadTableInfos["creature_template"] = new LoadTableInfo("entry", "entry");
@@ -334,12 +335,12 @@ $loadTableInfos["gossip_menu_option"] = new LoadTableInfo("MenuID", "MenuID");
 $loadTableInfos["gossip_text"] = new LoadTableInfo("ID", null, false, true); // npc_text on TC
 $loadTableInfos["item_template"] = new LoadTableInfo("entry", "entry");
 $loadTableInfos["npc_text"] = new LoadTableInfo(null, "ID", true, false); // gossip_text on Sun
-$loadTableInfos["pickpocketing_loot_template"] = new LoadTableInfo("entry", "entry");
+$loadTableInfos["pickpocketing_loot_template"] = new LoadTableInfo("Entry", "Entry");
 $loadTableInfos["points_of_interest"] = new LoadTableInfo("ID", "ID");
 $loadTableInfos["pool_members"] = new LoadTableInfo("spawnId", "spawnId");
 $loadTableInfos["pool_template"] = new LoadTableInfo("entry", "entry");
-$loadTableInfos["reference_loot_template"] = new LoadTableInfo("entry", "entry");
-$loadTableInfos["skinning_loot_template"] = new LoadTableInfo("entry", "entry");
+$loadTableInfos["reference_loot_template"] = new LoadTableInfo("Entry", "Entry");
+$loadTableInfos["skinning_loot_template"] = new LoadTableInfo("Entry", "Entry");
 $loadTableInfos["smart_scripts"] = new LoadTableInfo("entryorguid", "entryorguid");
 $loadTableInfos["spawn_group"] = new LoadTableInfo("groupId", "groupId");
 $loadTableInfos["spell_template"] = new LoadTableInfo("entry", null, false, true);
@@ -440,58 +441,41 @@ class DBConverter
 	{
         $this->LoadTable("conditions");
         
-		// TODO: very heavy...
-		foreach($this->sunStore->conditions as &$condition_arr) {
-			foreach($condition_arr as &$sun_condition) {
-				if (  $tc_condition->SourceTypeOrReferenceId == $sun_condition->SourceTypeOrReferenceId
-				&& $tc_condition->SourceGroup == $sun_condition->SourceGroup
-				&& ($overrideCheckSourceEntry ? $overrideCheckSourceEntry : $tc_condition->SourceEntry) == $sun_condition->SourceEntry
-				&& $tc_condition->SourceId == $sun_condition->SourceId
-				&& $tc_condition->ElseGroup == $sun_condition->ElseGroup
-				&& $tc_condition->ConditionTypeOrReference == $sun_condition->ConditionTypeOrReference
-				&& $tc_condition->ConditionTarget == $sun_condition->ConditionTarget
-				&& $tc_condition->ConditionValue1 == $sun_condition->ConditionValue1
-				&& $tc_condition->ConditionValue2 == $sun_condition->ConditionValue2
-				&& $tc_condition->ConditionValue3 == $sun_condition->ConditionValue3
-				&& $tc_condition->NegativeCondition == $sun_condition->NegativeCondition
-				&& $tc_condition->ErrorType == $sun_condition->ErrorType
-				&& $tc_condition->ErrorTextId == $sun_condition->ErrorTextId
-				&& $tc_condition->ScriptName == $sun_condition->ScriptName)
-				return true;
-			}
+		$check_source_entry = $overrideCheckSourceEntry ? $overrideCheckSourceEntry : $tc_condition->SourceEntry;
+		$sun_conditions = &$this->sunStore->FindAll("conditions", $check_source_entry);
+		
+		foreach($sun_conditions as &$sun_condition) {
+			if (   $tc_condition->SourceTypeOrReferenceId == $sun_condition->SourceTypeOrReferenceId
+			    && $tc_condition->SourceGroup == $sun_condition->SourceGroup
+			    && $tc_condition->SourceId == $sun_condition->SourceId
+			    && $tc_condition->ElseGroup == $sun_condition->ElseGroup
+			    && $tc_condition->ConditionTypeOrReference == $sun_condition->ConditionTypeOrReference
+			    && $tc_condition->ConditionTarget == $sun_condition->ConditionTarget
+			    && $tc_condition->ConditionValue1 == $sun_condition->ConditionValue1
+			    && $tc_condition->ConditionValue2 == $sun_condition->ConditionValue2
+			    && $tc_condition->ConditionValue3 == $sun_condition->ConditionValue3
+			    && $tc_condition->NegativeCondition == $sun_condition->NegativeCondition
+			    && $tc_condition->ErrorType == $sun_condition->ErrorType
+			    && $tc_condition->ErrorTextId == $sun_condition->ErrorTextId
+			    && $tc_condition->ScriptName == $sun_condition->ScriptName)
+			return true;
 		}
 		return false;
 	}
-    
-    // array(menuID => array(conditions))
-    private $tc_menu_condition_cache = [];
     
 	function CreateMenuConditions(int $tc_menu_id, int $sun_menu_id, int $tc_text_id, int $sun_text_id)
 	{
 		static $CONDITION_SOURCE_TYPE_GOSSIP_MENU = 14;
 		 
         $this->LoadTable("conditions");
-        
-        // we use a cache here instead of going through every conditions every time
-        if (empty($this->tc_menu_condition_cache))
-			foreach($this->tcStore->conditions as &$condition_arr) 
-				foreach($condition_arr as &$tc_condition) 
-					if ($tc_condition->SourceTypeOrReferenceId == $CONDITION_SOURCE_TYPE_GOSSIP_MENU)
-					{
-						if (!array_key_exists($tc_condition->SourceGroup, $this->tc_menu_condition_cache))
-							$this->tc_menu_condition_cache[$tc_condition->SourceGroup] = [];
-						
-						array_push($this->tc_menu_condition_cache[$tc_condition->SourceGroup], $tc_condition);
-					}
-        
+
 		$this->timelol("CMO", true);
 		$this->timelol("CMO");
 		
-        if (!array_key_exists($tc_menu_id, $this->tc_menu_condition_cache))
-            return;
-        
-		foreach($this->tc_menu_condition_cache[$tc_menu_id] as &$tc_condition) {
-			if ($tc_condition->SourceEntry != $tc_text_id) 
+		$tc_conditions = &$this->tcStore->FindAll("conditions", $tc_text_id);
+
+		foreach($tc_conditions as &$tc_condition) {
+			if ($tc_condition->SourceGroup != $tc_menu_id) 
 			   continue;
 
 			if ($this->SunHasCondition($tc_condition, $sun_menu_id)) {
@@ -532,14 +516,12 @@ class DBConverter
 				}
 				
 				$sun_condition = $tc_condition; //copy
+				$sun_condition->id = $this->GetNewSunConditionId();
 				$sun_condition->SourceGroup = $sun_menu_id;
 				$sun_condition->Comment = "(autoimported) " . $tc_condition->Comment;
 				$sun_condition->Comment = str_replace($tc_menu_id, $sun_menu_id, $sun_condition->Comment);
 				
-				if ($this->sunStore->Exists("conditions", $sun_condition->id))
-					assert(false); //Not handled yet, what to do?
-
-				$this->sunStore->Insert("conditions", $sun_condition);
+				$this->sunStore->Insert("conditions", $sun_condition, $sun_condition->SourceEntry);
 				fwrite($this->file, WriteObject($this->conn, "conditions", $sun_condition));
 			}
 		}
@@ -838,7 +820,7 @@ class DBConverter
 		fwrite($this->file, $sql);
 	}
 
-	function FindAllSmart(int $sun, int $entryorguid, int $source_type) : array
+	function &FindAllSmart(int $sun, int $entryorguid, int $source_type) : array
 	{
         $this->LoadTable("smart_scripts");
         
@@ -847,18 +829,11 @@ class DBConverter
 		$this->timelol("FA", true);
 		$this->timelol("FA");
 		
-		/*
-		$ref = $sun ? $this->sunStore->smart_scripts : $this->tcStore->smart_scripts;
-		foreach($ref as &$smart_script) {
-			if ($smart_script->entryorguid == $entryorguid && $smart_script->source_type == $source_type)
-				array_push($results, $smart_script);
-		}*/
-		
 		if ($sun) {
-			array_push($results, FindAll($this->sunStore->FindAll("smart_scripts", $entryorguid), "source_type", $source_type));
+			$results = FindAll($this->sunStore->FindAll("smart_scripts", $entryorguid), "source_type", $source_type);
 		}
 		else {
-			array_push($results, FindAll($this->tcStore->FindAll("smart_scripts", $entryorguid), "source_type", $source_type));
+			$results = FindAll($this->tcStore->FindAll("smart_scripts", $entryorguid), "source_type", $source_type);
 		}
 		$this->timelol("FA");
 		
@@ -893,15 +868,10 @@ class DBConverter
 		$this->timelol("DeleteAllSmart");
 		
 		// Unset in store
-		foreach(array_keys($this->sunStore->smart_scripts[$entryorguid]) as $key)
-			if ($this->sunStore->smart_scripts[$entryorguid][$key]->source_type == $source_type)
-				unset($this->sunStore->smart_scripts[$entryorguid][$key]);
-				
-		/*
-		foreach($this->sunStore->smart_scripts as $k => $smart_script) {
-			if ($smart_script->entryorguid == $entryorguid && $smart_script->source_type == $source_type)
-				unset($this->sunStore->smart_scripts[$k]);
-		}*/
+		if (array_key_exists($entryorguid, $this->sunStore->smart_scripts))
+			foreach(array_keys($this->sunStore->smart_scripts[$entryorguid]) as $key => &$row)
+				if ($row->source_type == $source_type)
+					unset($this->sunStore->smart_scripts[$entryorguid][$key]);
 
 		$this->timelol("DeleteAllSmart");
 	}
@@ -935,6 +905,18 @@ class DBConverter
 		$this->timelol("CCT");
 	}
 
+	function GetNewSunConditionId()
+	{
+		static $id = null;
+
+		if ($id === null)
+			foreach($this->sunStore->conditions as &$arr)
+				foreach($arr as &$row)
+					$id = max($id, $row->id);
+
+		return ++$id;
+	}
+	
 	function CreateSmartConditions(int $tc_entry, int $source_type)
 	{
 		if (CheckAlreadyImported($tc_entry + $source_type << 28)) { //max entry is 30.501.000 (smaller number with 28 bits shift is 268.435.456)
@@ -945,30 +927,27 @@ class DBConverter
         $this->LoadTable("conditions");
         
 		static $CONDITION_SOURCE_TYPE_SMART_EVENT = 22;
-		 
-		foreach($this->tcStore->conditions as &$condition_arr) {
-			foreach($condition_arr as &$tc_condition) {
-				if ($tc_condition->SourceTypeOrReferenceId != $CONDITION_SOURCE_TYPE_SMART_EVENT)
-				continue;
-				
-				//SourceGroup == id, but we import all
-				
-				if ($tc_condition->SourceEntry != $tc_entry) 
+
+		$tc_conditions = &$this->tcStore->FindAll("conditions", $tc_entry);
+		foreach($tc_conditions as &$tc_condition) {
+			if ($tc_condition->SourceTypeOrReferenceId != $CONDITION_SOURCE_TYPE_SMART_EVENT)
 				continue;
 			
-				if ($tc_condition->SourceId != $source_type) 
-				continue;
+			//SourceGroup == id, but we import all
 			
-				if ($this->SunHasCondition($tc_condition)) {
-					LogDebug("Sun db already has this condition (entry: {$tc_entry})");
-					continue;
-				}
-				$sun_condition = $tc_condition; //copy
-				$sun_condition->Comment = "(autoimported) " . $tc_condition->Comment;
-				
-				$this->sunStore->Insert("conditions", $sun_condition, $sun_condition->id);
-				fwrite($this->file, WriteObject($this->conn, "conditions", $sun_condition));
+			if ($tc_condition->SourceId != $source_type) 
+				continue;
+		
+			if ($this->SunHasCondition($tc_condition)) {
+				LogDebug("Sun db already has this condition (entry: {$tc_entry})");
+				continue;
 			}
+			$sun_condition = $tc_condition; // copy
+			$sun_condition->id = $this->GetNewSunConditionId();
+			$sun_condition->Comment = "(autoimported) " . $tc_condition->Comment;
+			
+			$this->sunStore->Insert("conditions", $sun_condition, $sun_condition->SourceEntry);
+			fwrite($this->file, WriteObject($this->conn, "conditions", $sun_condition));		
 		}
 	}
 
@@ -997,7 +976,7 @@ class DBConverter
 		$this->sunStore->Remove("creature_summon_groups", $npcEntry);
 
 		foreach($results as &$tc_group) {
-            $this->sunStore->Insert("creature_summon_groups", $tc_group);
+            $this->sunStore->Insert("creature_summon_groups", $tc_group, $npcEntry);
 			fwrite($this->file, WriteObject($this->conn, "creature_summon_groups", $tc_group)); 
 
 			$entry = $tc_group->entry;
@@ -1132,9 +1111,11 @@ class DBConverter
 	function DeleteLKCreatureEntry(string $table_name, string $key_column_name, string $patch_column_name = null, int $creature_id)
 	{
         $this->LoadTable($table_name);
-		foreach($this->sunStore->$table_name as $key => &$value) {
-			if ($value->$key_column_name == $creature_id && ($patch_column_name === null || $value->$patch_column_name == 5))
-				unset($this->sunStore->$table_name[$key]);
+		foreach($this->sunStore->$table_name as &$value_array) {
+			foreach($value_array as $key => &$value) {
+				if ($value->$key_column_name == $creature_id && ($patch_column_name === null || $value->$patch_column_name == 5))
+					unset($value_array[$key]);
+			}
 		}
 		$sql = "DELETE FROM {$table_name} WHERE {$key_column_name} = {$creature_id}" . ($patch_column_name !== null ? " AND {$patch_column_name} = 5" : "") . ";" . PHP_EOL;
 		fwrite($this->file, $sql); 
@@ -1326,8 +1307,8 @@ class DBConverter
 
 	function IsIdenticalSmartAI(int $creature_id) : bool
 	{
-		$sun_results = $this->sunStore->FindAll("smart_scripts", $creature_id);
-		$tc_results = $this->tcStore->FindAll("smart_scripts", $creature_id);
+		$sun_results = &$this->sunStore->FindAll("smart_scripts", $creature_id);
+		$tc_results = &$this->tcStore->FindAll("smart_scripts", $creature_id);
 		return CheckIdentical($sun_results, $tc_results, "source_type", SmartSourceType::creature, "id");
 	}
 	
@@ -1343,7 +1324,7 @@ class DBConverter
             return;
         
         $this->LoadTable("smart_scripts");
-		if (IsIdenticalSmartAI($creature_id)) {
+		if ($this->IsIdenticalSmartAI($creature_id)) {
 			//echo "Already identical, skipping" . PHP_EOL;
 			LogDebug("SmartAI for creature {$creature_id} is already in db and identical.");
 			return;
@@ -1373,7 +1354,7 @@ class DBConverter
 
 		$this->timelol("CIC", true);
 		$this->timelol("CIC");
-		if (IsIdenticalSmartAI($creature_id)) {
+		if ($this->IsIdenticalSmartAI($creature_id)) {
 			//echo "Already identical, skipping" . PHP_EOL;
 			LogDebug("SmartAI for creature {$creature_id} is already in db and identical.");
 			return;
@@ -1399,7 +1380,7 @@ class DBConverter
 						// then just proceed
                     } else {
                         echo PHP_EOL;
-						if (IsIdenticalSmartAI($creature_id))
+						if ($this->IsIdenticalSmartAI($creature_id))
 							return;
 						else
                         	throw new ImportException("This would replace a creature (id: {$creature_id}) which already has a script ({$sun_ai_name}/{$sun_script_name}), no import.", false);
@@ -1432,7 +1413,7 @@ class DBConverter
 		if ($tc_gob_template->AIName != "SmartAI")
 			throw new ImportException("Smart reference a non Smart gameobject {$gob_id}");
 
-		FIXME;
+		FIXME
 		if (CheckIdentical($this->sunStore->smart_scripts, $this->tcStore->smart_scripts, "entryorguid", $gob_id, "id")) {
 			//echo "Already identical, skipping" . PHP_EOL;
 			LogDebug("SmartAI for gob {$gob_id} is already in db and identical.");
@@ -2063,7 +2044,7 @@ class DBConverter
 		$sun_action_id = $action_id;
 		if (count($sun_results) > 0) {
 			//we have a path with this id, but no the same...
-			$sun_action_id = GetHighest($this->sunStore->waypoint_scripts, "id") + 1;
+			$sun_action_id = max(array_keys($this->sunStore->waypoint_scripts)) + 1;
 		}
 		
 		foreach($results as &$tc_waypoint_script) {

@@ -77,25 +77,6 @@ function CheckAlreadyImported(int $id) : bool
 	return false;
 }
 
-function HasAny(array &$container, string $keyname, $value) : bool
-{
-	foreach(array_keys($container) as $key)
-		if($container[$key]->$keyname == $value)
-			return true;
-
-	return false;
-}
-
-function GetHighest(&$container, $keyname) : int
-{
-	$highest = 0;
-
-	foreach(array_keys($container) as $key)
-		$highest = max($container[$key]->$keyname, $highest);
-
-	return $highest;
-}
-
 // loose identical check, if a field doesn't exist on one side, ignore it
 function CheckIdenticalObject(&$objectA, &$objectB) : bool
 {
@@ -135,6 +116,9 @@ function _CheckIdentical(array &$sun_results, array &$tc_results, &$sortOnKey) :
 // $sortOnKey: key on which the entries will be compared for sorting. For example if there is multiple smart entry for a creature, this is needed to make sure they are compared correctly id matching id.
 function CheckIdenticalExtended(array &$sunContainer, array &$tcContainer, $key_value, $sortOnKey) : bool
 {
+	if (!array_key_exists($key_value, $sunContainer) || !array_key_exists($key_value, $tcContainer))
+		return false;
+		
 	$sun_results = &$sunContainer[$key_value];
 	$tc_results = &$tcContainer[$key_value];
 	return _CheckIdentical($sun_results, $tc_results, $sortOnKey);
@@ -144,13 +128,13 @@ function CheckIdenticalExtended(array &$sunContainer, array &$tcContainer, $key_
 // $sortOnKey: key on which the entries will be compared for sorting. For example if there is multiple smart entry for a creature, this is needed to make sure they are compared correctly id matching id.
 function CheckIdentical(array &$sunContainer, array &$tcContainer, string $keyname, $value, $sortOnKey) : bool
 {
-	$sun_results = &FindAll($sunContainer, $keyname, $value);
-	$tc_results = &FindAll($tcContainer, $keyname, $value);
+	$sun_results = FindAll($sunContainer, $keyname, $value);
+	$tc_results = FindAll($tcContainer, $keyname, $value);
 
 	return _CheckIdentical($sun_results, $tc_results, $sortOnKey);
 }
 
-function FindAll(array &$container, string $keyname, $value) : array
+function &FindAll(array &$container, string $keyname, $value) : array
 {
 	$results = [];
 	
@@ -164,16 +148,17 @@ function FindAll(array &$container, string $keyname, $value) : array
 	return $results;
 }
 
-function FindFirst(array &$container, string $keyname, $value)
+function &FindFirst(array &$container, string $keyname, $value)
 {
+	$null = null;
 	if ($container === null)
-		return null;
+		return $null;
 
 	foreach(array_keys($container) as &$key)
 		if($container[$key]->$keyname == $value)
             return $container[$key];
 			
-	return null;
+	return $null;
 }
 
 function RemoveAny(&$container, string $keyname, $value)
