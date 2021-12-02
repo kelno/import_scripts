@@ -113,26 +113,41 @@ function CheckIdenticalObject(&$objectA, &$objectB) : bool
     return true;
 }
 
-// $sortOnKey: key on which the entries will be compared for sorting. For example if there is multiple smart entry for a creature, this is needed to make sure they are compared correctly id matching id.
-function CheckIdentical(array &$sunContainer, array &$tcContainer, string $keyname, $value, $sortOnKey) : bool
+function _CheckIdentical(array &$sun_results, array &$tc_results, &$sortOnKey) : bool
 {
-	$sunResults = &FindAll($sunContainer, $keyname, $value);
-	$tcResults = &FindAll($tcContainer, $keyname, $value);
-
-	if (count($sunResults) != count($tcResults))
+	if (count($sun_results) != count($tc_results))
 		return false;
-    
-    $sortCallBack = function ($a, $b) use (&$sortOnKey) {
-        return $a->$sortOnKey <=> $b->$sortOnKey;
-    };
-	usort($sunResults, $sortCallBack);
-	usort($tcResults, $sortCallBack);
 
-	for ($i = 0; $i < count($sunResults); ++$i)
-		if (!CheckIdenticalObject($sunResults[$i], $tcResults[$i]))
+	$sortCallBack = function ($a, $b) use (&$sortOnKey) {
+		return $a->$sortOnKey <=> $b->$sortOnKey;
+	};
+	usort($sun_results, $sortCallBack);
+	usort($tc_results, $sortCallBack);
+
+	for ($i = 0; $i < count($sun_results); ++$i)
+		if (!CheckIdenticalObject($sun_results[$i], $tc_results[$i]))
 			return false;
 
 	return true;
+}
+
+// for containers with key
+// $sortOnKey: key on which the entries will be compared for sorting. For example if there is multiple smart entry for a creature, this is needed to make sure they are compared correctly id matching id.
+function CheckIdenticalExtended(array &$sunContainer, array &$tcContainer, $key_value, $sortOnKey) : bool
+{
+	$sun_results = &$sunContainer[$key_value];
+	$tc_results = &$tcContainer[$key_value];
+	return _CheckIdentical($sun_results, $tc_results, $sortOnKey);
+}
+
+// for unmapped containers
+// $sortOnKey: key on which the entries will be compared for sorting. For example if there is multiple smart entry for a creature, this is needed to make sure they are compared correctly id matching id.
+function CheckIdentical(array &$sunContainer, array &$tcContainer, string $keyname, $value, $sortOnKey) : bool
+{
+	$sun_results = &FindAll($sunContainer, $keyname, $value);
+	$tc_results = &FindAll($tcContainer, $keyname, $value);
+
+	return _CheckIdentical($sun_results, $tc_results, $sortOnKey);
 }
 
 function FindAll(array &$container, string $keyname, $value) : array
