@@ -1,9 +1,7 @@
 <?php
 
 /*TODO:
-- creature_text not always imported?
-- make smart_scripts ported for tlk be patch 5
-- check spell existence on tbc (else, patch 5 as well)
+- make smart_scripts ported for tlk be patch 5 if the creature is from TLK
 - conditions on menu options don't check patch 5 either
 */
 
@@ -97,8 +95,9 @@ class DBStore
 	public $broadcast_text = null; //key is broadcast id
 	public $conditions = null; //key has NO MEANING
 	public $creature = null; //key has NO MEANING
-	public $creature_addon = null; //key is spawnID TODO should be no meaning
+	public $creature_addon = null; //key has NO MEANING
 	public $creature_entry = null; //key has NO MEANING
+	public $creature_equip_template = null; //key has NO MEANING
 	public $creature_formations = null; //key is memberGUID
 	public $creature_loot_template = null; //key is Entry
 	public $creature_model_info = null; //key is modelid
@@ -220,9 +219,10 @@ class LoadTableInfo
 
 $loadTableInfos = [];
 $loadTableInfos["broadcast_text"] = new LoadTableInfo("ID", "ID");
-$loadTableInfos["creature"] = new LoadTableInfo("spawnID", "guid"); //key is spawnID TODO: should be NO MEANING (have to change usage)
+$loadTableInfos["creature"] = new LoadTableInfo(); 
 $loadTableInfos["creature_addon"] = new LoadTableInfo("spawnID", "guid");
 $loadTableInfos["creature_entry"] = new LoadTableInfo(null, null, false, true);
+$loadTableInfos["creature_equip_template"] = new LoadTableInfo();
 $loadTableInfos["conditions"] = new LoadTableInfo();
 $loadTableInfos["creature_formations"] = new LoadTableInfo("memberGUID", "memberGUID");
 $loadTableInfos["creature_loot_template"] = new LoadTableInfo();
@@ -1869,7 +1869,7 @@ class DBConverter
 			echo "WARNING: Deleting creature (guid: {$spawn_id}) targeted by a smartscript ({$result->entryorguid}, {$result->id}). Smart scripts ref has been left as is." . PHP_EOL;
 		}
 		
-		$results = FindAll($this->sunStore->creature_addon, "spawn_id", $spawn_id);
+		$results = FindAll($this->sunStore->creature_addon, "spawnID", $spawn_id);
 		foreach($results as &$result) {
 			if (!$result->path_id)
 				continue;
@@ -1901,7 +1901,7 @@ class DBConverter
         
 		$results = FindAll($this->sunStore->gameobject, "map", $map_id);
 		foreach($results as &$result) {
-			if (!in_array($result->guid, $not_in))
+			if (!in_array($result->spawnID, $not_in))
 				$this->DeleteSunGameObjectSpawn($result->guid);
 		}
 	}
@@ -1941,6 +1941,8 @@ class DBConverter
 			return $action_id;
 		
         $this->LoadTable("waypoint_scripts");
+        $this->LoadTable("creature_equip_template");
+        
 		$results = FindAll($this->tcStore->waypoint_scripts, "id", $action_id);
 		if (empty($results))
 			throw new ImportException("ERROR: Tried to import waypoint_scripts with id {$action_id} but no such entry exists");
@@ -1967,10 +1969,14 @@ class DBConverter
 					//we already get the same broadcast_text tables, so nothing to change here!
 					break;
 				case 31: //SCRIPT_COMMAND_EQUIP
-					throw new ImportException("NYI SCRIPT_COMMAND_EQUIP (31)");
+                    $equipment_id = $tc_waypoint_script->datalong;
+                    $sun_equipment = FindFirst($this->sunStore->creature_equip_template, "CreatureID", $equipment_id);
+                    if ($sun_equipment === null)
+                        LogError("Waypoint scripts action id {$action_id} has SCRIPT_COMMAND_EQUIP using unknown equipment {$sun_equipment}");
+                    break;
 				case 35: //SCRIPT_COMMAND_MOVEMENT
-					$movementType = $tc_waypoint_script->datalong;
-					if ($movementType == 2) { // WAYPOINT_MOTION_TYPE
+					$movement_type = $tc_waypoint_script->datalong;
+					if ($movement_type == 2) { // WAYPOINT_MOTION_TYPE
 						$path_id = $tc_waypoint_script->dataint;
 						throw new ImportException("NYI SCRIPT_COMMAND_MOVEMENT (35) with WAYPOINT_MOTION_TYPE");
 					}
@@ -2412,9 +2418,6 @@ class DBConverter
 
 		//handle creatures
 		$results = FindAll($this->tcStore->creature, "map", $map_id);
-		if (empty($results)) 
-			throw new ImportException("Failed to find any TC creature in map {$map_id}");
-
 		$tc_guids = [];
 		foreach($results as &$tc_creature) {
 			array_push($tc_guids, $tc_creature->guid);
@@ -2426,16 +2429,13 @@ class DBConverter
 
 		//handle gameobjects
 		$results = FindAll($this->tcStore->gameobject, "map", $map_id);
-		if (empty($results))
-			throw new ImportException("Failed to find any TC gameobject in map {$map_id}");
-
 		$tc_guids = [];
 		foreach($results as &$tc_gob) {
 			array_push($tc_guids, $tc_gob->guid);
 			if (FindFirst($this->sunStore->gameobject, "spawnID", $tc_gob->guid) === null)
 				$this->ImportTCGameObject($tc_gob->guid, $patch_min, $patch_max);
 		}
-		$this->DeleteSunGameObjectsInMap($creature_id, $tc_guids);
+		$this->DeleteSunGameObjectsInMap($map_id, $tc_guids);
 	}
 
 	//Write formations stored in $this->delayed_formations_imports
@@ -2514,14 +2514,6 @@ class DBConverter
 		if (FindFirst($templates, "patch", 0) === null)
 			$patch_min = 5; // assume it's a TLK object then
 
-		//create gameobject_entry
-		$sun_gameobject_entry = new stdClass;
-		$sun_gameobject_entry->spawnID = $spawn_id;
-		$sun_gameobject_entry->entry   = $tc_gameobject->id;
-
-		$this->sunStore->gameobject_entry[$spawn_id] = $sun_gameobject_entry;
-		fwrite($this->file, WriteObject($this->conn, "gameobject_entry", $sun_gameobject_entry));
-
 		//create gameobject
 		$sun_gameobject = new stdClass;
 		$sun_gameobject->spawnID          = $spawn_id;
@@ -2548,7 +2540,15 @@ class DBConverter
 		array_push($this->sunStore->gameobject, $sun_gameobject);
 		fwrite($this->file, WriteObject($this->conn, "gameobject", $sun_gameobject));
 		
-		//game event gameobject
+		// create gameobject_entry
+		$sun_gameobject_entry = new stdClass;
+		$sun_gameobject_entry->spawnID = $spawn_id;
+		$sun_gameobject_entry->entry   = $tc_gameobject->id;
+
+		$this->sunStore->gameobject_entry[$spawn_id] = $sun_gameobject_entry;
+		fwrite($this->file, WriteObject($this->conn, "gameobject_entry", $sun_gameobject_entry));
+
+		// game event gameobject
 		if (array_key_exists($spawn_id, $this->tcStore->game_event_gameobject)) {
 			$sun_geg = new stdClass;
 			$sun_geg->event = $this->tcStore->game_event_gameobject[$spawn_id]->eventEntry;
