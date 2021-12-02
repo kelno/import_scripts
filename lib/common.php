@@ -1,7 +1,7 @@
 <?php
 
 /*TODO:
-- Convert most tables to extended system
+- Convert most tables to table key system in DBStore.
 - make smart_scripts ported for tlk be patch 5 if the creature is from TLK
 - conditions on menu options don't check patch 5 either
 */
@@ -394,7 +394,7 @@ class LoadTableInfo
 
 $loadTableInfos = [];
 $loadTableInfos["broadcast_text"] = new LoadTableInfo("ID", "ID");
-$loadTableInfos["creature"] = new LoadTableInfo(); 
+$loadTableInfos["creature"] = new LoadTableInfo("spawnID", "guid"); 
 $loadTableInfos["creature_addon"] = new LoadTableInfo("spawnID", "guid", false, false);
 $loadTableInfos["creature_entry"] = new LoadTableInfo("spawnID", null, false, true);
 $loadTableInfos["creature_equip_template"] = new LoadTableInfo();
@@ -412,7 +412,7 @@ $loadTableInfos["creature_text"] = new LoadTableInfo();
 $loadTableInfos["game_event"] = new LoadTableInfo("entry", "eventEntry");
 $loadTableInfos["game_event_creature"] = new LoadTableInfo("guid", "guid");
 $loadTableInfos["game_event_gameobject"] = new LoadTableInfo("guid", "guid");
-$loadTableInfos["gameobject"] = new LoadTableInfo();
+$loadTableInfos["gameobject"] = new LoadTableInfo("spawnID", "guid");
 $loadTableInfos["gameobject_addon"] = new LoadTableInfo("spawnID", "guid");
 $loadTableInfos["gameobject_entry"] = new LoadTableInfo(null, null, false, true);
 $loadTableInfos["gameobject_template"] = new LoadTableInfo("entry", "entry");
@@ -1334,7 +1334,6 @@ class DBConverter
 		$sun_results = FindAll($this->sunStore->creature_template_spell, "CreatureID", $creature_id);
 		if (!empty($sun_results))
 		{
-			
 			if (CheckIdentical($tc_results, $sun_results, "CreatureID", $creature_id, "Index"))
 			{
 				LogDebug("creature_template_spell for creature {$creature_id} is already in db and identical.");
@@ -1559,10 +1558,10 @@ class DBConverter
 	{
         $this->LoadTable("creature");
 
-		if (!$this->tcStore->Exists("creature",  $spawn_id, "guid", $spawn_id))
+		if (!$this->tcStore->Exists("creature",  $spawn_id))
 			throw new ImportException("Smart TC trying to target a non existing creature guid {$spawn_id}... this is a tc db error. Ignoring.", false);
 
-		if ($this->sunStore->Exists("creature", $spawn_id, "spawnID", $spawn_id))
+		if ($this->sunStore->Exists("creature", $spawn_id))
 			return; //already present
 
 		LogWarning("Trying to use creature spawnID {$spawn_id} existing only on TC, importing it now.");
@@ -1575,10 +1574,10 @@ class DBConverter
         $this->LoadTable("gameobject");
         $this->LoadTable("gameobject_template");
         
-		if (!$this->tcStore->Exists("gameobject", $spawn_id, "guid", $spawn_id))
+		if (!$this->tcStore->Exists("gameobject", $spawn_id))
 			throw new ImportException("Smart TC trying to target a non existing gob guid {$spawn_id} on their own db... this is a tc db error. Ignoring.");
 
-		if ($this->sunStore->Exists("gameobject", $spawn_id, "spawnID", $spawn_id))
+		if ($this->sunStore->Exists("gameobject", $spawn_id))
 			return; //already present
 		
 		LogWarning("Trying to use target a gob spawnID {$spawn_id} existing only on TC, importing it now.");
@@ -1609,7 +1608,7 @@ class DBConverter
 			case SmartTarget::CREATURE_GUID:
 				$spawn_id = $sun_smart_entry->target_param1;
 				//$creature_id = $sun_smart_entry->target_param2;
-				$results = FindAll($this->tcStore->creature, "guid", $spawn_id);
+				$results = $this->tcStore->FindAll("creature", $spawn_id);
 				if (empty($results)) 
 					throw new ImportException("Could not find tc creature with guid {$spawn_id} for target CREATURE_GUID");
 					
@@ -1648,7 +1647,7 @@ class DBConverter
 				break;
 			case SmartTarget::GAMEOBJECT_GUID:
 				$spawn_id = $sun_smart_entry->target_param1;
-				$tc_gob = FindFirst($this->tcStore->gameobject, "guid", $spawn_id);
+				$tc_gob = $this->tcStore->FindFirst("gameobject", $spawn_id);
 				if ($tc_gob === null)
 					throw new ImportException("SCould not find TC gameobject with spawn_id {$spawn_id} for target GAMEOBJECT_GUID. This is a TC error.");
 
@@ -2078,7 +2077,7 @@ class DBConverter
 		
         $this->LoadTable("gameobject");
         
-		$results = FindAll($this->sunStore->gameobject, "map", $map_id);
+		$results = $this->sunStore->FindAllByField("gameobject", "map", $map_id);
 		foreach($results as &$result) {
 			if (!in_array($result->spawnID, $not_in))
 				$this->DeleteSunGameObjectSpawn($result->guid);
@@ -2092,7 +2091,7 @@ class DBConverter
 		
         $this->LoadTable("creature");
         
-		$results = FindAll($this->sunStore->creature, "map", $map_id);
+		$results = $this->sunStore->FindAllByField("creature", "map", $map_id);
 		foreach($results as &$result) {
 			if (!in_array($result->spawnID, $not_in))
 				$this->DeleteSunCreatureSpawn($result->spawnID);
@@ -2257,7 +2256,7 @@ class DBConverter
 		
 		if ($update_position)
 		{
-			$tc_creature = FindFirst($this->tcStore->creature, "guid", $spawn_id);
+			$tc_creature = $this->tcStore->FindFirst("creature", $spawn_id);
 			foreach($this->sunStore->creature as &$creature) 
 			{
 				if (  $creature->position_x != $tc_creature->position_x
@@ -2326,9 +2325,11 @@ class DBConverter
 		FlushWrite($this->file, $this->conn);
 		
 		if ($include_movement_type_update && $spawn_id != 0) {
-			foreach($this->sunStore->creature as &$creature) 
-				if ($creature->spawnID == $spawn_id)
-					$creature->MovementType = 2;
+			//&FindAll would work here?
+			foreach($this->sunStore->creature as &$creatures) 
+				foreach($creatures as &$creature) 
+					if ($creature->spawnID == $spawn_id)
+						$creature->MovementType = 2;
 
 			fwrite($this->file, "UPDATE creature SET MovementType = 2 WHERE spawnID = {$spawn_id};" . PHP_EOL);
 		}
@@ -2395,7 +2396,7 @@ class DBConverter
 		
 		$results = $this->tcStore->FindAllByField("creature_formations", "leaderGUID", $leaderGUID);
 		foreach($results as &$tc_formation) {
-			if ($this->sunStore->Exists("creature", $tc_formation->memberGUID, "spawnID", $tc_formation->memberGUID) === null) {
+			if ($this->sunStore->Exists("creature", $tc_formation->memberGUID) === null) {
 				//we don't have that leader yet
 				LogDebug("Trying to import formation for creature {$tc_formation->memberGUID}, but the creature isn't in our db yet. Importing it now");
 				$this->ImportTCCreature($tc_formation->memberGUID);
@@ -2477,10 +2478,10 @@ class DBConverter
         $this->LoadTable("creature_entry");
         $this->LoadTable("game_event_creature");
         
-		if ($this->sunStore->Exists("creature", $spawn_id, "spawnID", $spawn_id))
+		if ($this->sunStore->Exists("creature", $spawn_id))
 			return;
 		
-		$tc_creature = FindFirst($this->tcStore->creature, "guid", $spawn_id);
+		$tc_creature = $this->tcStore->FindFirst("creature", $spawn_id);
 
 		if (IsTLKCreature($tc_creature->id))
 			if ($patch_min < 5)
@@ -2572,14 +2573,14 @@ class DBConverter
         $this->LoadTable("creature");
         $this->LoadTable("creature_entry");
 
-		$results = FindAll($this->tcStore->creature, "id", $creature_id);
+		$results = $this->tcStore->FindAllByField("creature", "id", $creature_id);
 		if (empty($results))
 			throw new ImportException("Failed to find any TC creature with id {$creature_id}");
 						
 		$tc_guids = [];
 		foreach($results as &$tc_creature) {
 			array_push($tc_guids, $tc_creature->guid);
-			if (!$this->sunStore->Exists("creature", $tc_creature->guid, "spawnID", $tc_creature->guid)) {
+			if (!$this->sunStore->Exists("creature", $tc_creature->guid)) {
 				$sun_creature_entries = $this->sunStore->FindFirst("creature_entry", $tc_creature->guid);
 				if (!empty($sun_creature_entries))
 					throw new ImportException("Error in sun DB... there is a creature_entry without matching creature for spawn_id {$tc_creature->guid}");
@@ -2600,11 +2601,11 @@ class DBConverter
         $this->LoadTable("gameobject");
 
 		//handle creatures
-		$results = FindAll($this->tcStore->creature, "map", $map_id);
+		$results = $this->tcStore->FindAllByField("creature", "map", $map_id);
 		$tc_guids = [];
 		foreach($results as &$tc_creature) {
 			array_push($tc_guids, $tc_creature->guid);
-			if (!$this->sunStore->Exists("creature", $tc_creature->guid, "spawnID", $tc_creature->guid))
+			if (!$this->sunStore->Exists("creature", $tc_creature->guid))
 				$this->ImportTCCreature($tc_creature->guid, $patch_min, $patch_max);
 			else
 				LogDebug("Sun db already has creature {$tc_creature->guid}");
@@ -2613,11 +2614,11 @@ class DBConverter
 		$this->HandleFormations();
 
 		//handle gameobjects
-		$results = FindAll($this->tcStore->gameobject, "map", $map_id);
+		$results = $this->tcStore->FindAllByField("gameobject", "map", $map_id);
 		$tc_guids = [];
 		foreach($results as &$tc_gob) {
 			array_push($tc_guids, $tc_gob->guid);
-			if (!$this->sunStore->FindFirst("gameobject", $tc_gob->guid, "spawnID", $tc_gob->guid))
+			if (!$this->sunStore->FindFirst("gameobject", $tc_gob->guid))
 				$this->ImportTCGameObject($tc_gob->guid, $patch_min, $patch_max);
 			else
 				LogDebug("Sun db already has gameobject {$tc_gob->guid}");
@@ -2685,10 +2686,10 @@ class DBConverter
         $this->LoadTable("gameobject_template");
         $this->LoadTable("game_event_gameobject");
         
-		if ($this->sunStore->Exists("gameobject", $spawn_id, "spawnID", $spawn_id))
+		if ($this->sunStore->Exists("gameobject", $spawn_id))
 			return;
 		
-		$tc_gameobject = FindFirst($this->tcStore->gameobject, "guid", $spawn_id);
+		$tc_gameobject = $this->tcStore->FindFirst("gameobject", $spawn_id);
 		if ($tc_gameobject === null)
 			throw new ImportException("Failed to find any TC gameobject with spawnID {$spawn_id}");
 		
@@ -2784,7 +2785,7 @@ class DBConverter
 		
         $this->LoadTable("gameobject");
         
-		$results = FindAll($this->sunStore->gameobject, "id", $gob_id);
+		$results = $this->sunStore->FindAllByField("gameobject", "id", $gob_id);
 		foreach($results as &$result) {
 			if (!in_array($result->guid, $not_in))
 				$this->DeleteSunGameObjectSpawn($result->guid);
@@ -2798,14 +2799,14 @@ class DBConverter
 			
         $this->LoadTable("gameobject");
         
-		$results = FindAll($this->tcStore->gameobject, "id", $gob_id);
+		$results = $this->tcStore->FindAllByField("gameobject", "id", $gob_id);
 		if (empty($results)) 
 			throw new ImportException("Failed to find any TC gameobject with id {$gob_id}");
 						
 		$tc_guids = [];
 		foreach($results as &$tc_gob) {
 			array_push($tc_guids, $tc_gob->guid);
-			if (!array_key_exists($tc_gob->guid, $this->sunStore->gameobject))
+			if (!$this->sunStore->Exists("gameobject", $tc_gob->guid))
 				$this->ImportTCGameObject($tc_gob->guid, $patch_min, $patch_max);
 		}
 		$this->DeleteSunGameObjects($gob_id, $tc_guids);
