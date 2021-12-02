@@ -249,7 +249,7 @@ function ConvertPoIIcon(int $icon) : int
 
 function IsTLKMap(int $map_id) : bool
 {
-	return $map_id >= 571 && $map_id != 572 && $map_id != 580 && $map_id != 585;
+	return $map_id >= 571 && $map_id != 572 && $map_id != 580 && $map_id != 582 && $map_id != 584 && $map_id != 585 && $map_id != 586 && $map_id != 587 && $map_id != 588 && $map_id != 589 && $map_id != 590 && $map_id != 591;
 }
 
 function IsTLKCreature(int $creature_id) : bool
