@@ -91,12 +91,6 @@ function LogDebug(string $msg)
 	fwrite($file, "-- DEBUG {$msg}" . PHP_EOL);
 }
 
-enum TableKeyType
-{
-    case NO_KEY;
-    case KEY;
-}
-
 class DBStore
 {
 	public $broadcast_text = null;
@@ -143,8 +137,6 @@ class DBStore
 	public $waypoint_scripts = null;
 	public $waypoints = null;
 	
-	public $key_type = []; // contains TableKeyType for each loaded table
-    
 	private $loadmode = null;
     private $databaseName;
     
@@ -165,21 +157,6 @@ class DBStore
 	}
     /* Load table with this format: 
     table = [
-        Object,
-        Object,
-        Object,
-    ]
-    */
-    function LoadTableNoKey(&$conn, string $table_name)
-    {
-		$stmt = $conn->query("SELECT * FROM {$this->databaseName}.{$table_name}");
-		$stmt->setFetchMode(PDO::FETCH_OBJ);
-		$this->$table_name = $stmt->fetchAll();
-        
-        $this->key_type[$table_name] = TableKeyType::NO_KEY;
-    }
-    /* Load table with this format: 
-    table = [
         main_key = [ Object, Object, ... ]
     ]
     */
@@ -195,8 +172,6 @@ class DBStore
             
             array_push($this->$table_name[$key], $v);
         }
-        
-        $this->key_type[$table_name] = TableKeyType::KEY;
     }
     
     function LoadTable(&$conn, string $table_name) : bool
@@ -216,61 +191,36 @@ class DBStore
         if ($disabled)
             return false;
         
-        if ($key !== null)
-            $this->LoadTableWithKey($conn, $table_name, $key);
-        else
-            $this->LoadTableNoKey($conn, $table_name, $key);
-
+		$this->LoadTableWithKey($conn, $table_name, $key);
         return true;
     }
     
     function FindAllByField(string $table_name, $field_name, &$field_value) : array
     {
-		if ($this->$table_name === null)
-			return null;
-
 		$results = [];
-		switch($this->key_type[$table_name]) {
-			case TableKeyType::NO_KEY:
-				foreach ($this->$table_name as &$value)
-					if ($value->$field_name == $field_value)
-						array_push($results, $value);
-						
-				break;
-			case TableKeyType::KEY:
-				foreach ($this->$table_name as &$value_array)
-					foreach ($value_array as &$value)
-						if ($value->$field_name == $field_value)
-							array_push($results, $value);
-				break;
-		}
+		
+		if ($this->$table_name === null)
+			return $results;
+
+		foreach ($this->$table_name as &$value_array)
+		foreach ($value_array as &$value)
+			if ($value->$field_name == $field_value)
+				array_push($results, $value);
 		
         return $results;
 	}
 
-	// $field_name must be defined for tables using NO_KEY
-    function FindAll(string $table_name, $main_key_value, $field_name = null) : array
+    function FindAll(string $table_name, $main_key_value) : array
     {
 		$results = [];
+
          if ($this->$table_name === null)
             return $results;
 
-        switch($this->key_type[$table_name]) {
-            case TableKeyType::NO_KEY:
-				assert($field_name !== null);
-				foreach ($this->$table_name as &$value)
-					if ($value->$field_name == $main_key_value)
-						array_push($results, $value);
-
-				break;
-            case TableKeyType::KEY:
-                if (!array_key_exists($main_key_value, $this->$table_name))
-                    return $results;
-                
-                return $this->$table_name[$main_key_value];
-        }
-        
-        return $results;
+		if (!array_key_exists($main_key_value, $this->$table_name))
+			return $results;
+		
+		return $this->$table_name[$main_key_value];
     }
     
 	function Exists(string $table_name, $main_key_value, string $keyname = null, $value = null) : bool
@@ -278,101 +228,64 @@ class DBStore
 		if ($this->$table_name === null)
 			return false;
 
-		switch($this->key_type[$table_name]) {
-			case TableKeyType::NO_KEY:
-				assert($keyname !== null);
-				assert($value !== null);
-				foreach ($this->$table_name as &$row)
-					if ($row->$keyname == $value)
-						return true;
-				break;
-			case TableKeyType::KEY:
-				if (!array_key_exists($main_key_value, $this->$table_name))
-					return false;
+		if (!array_key_exists($main_key_value, $this->$table_name))
+			return false;
 
-				$table_by_main_key = &$this->$table_name[$main_key_value]; // [ Object, Object, ... ]
-				if (empty($table_by_main_key))
-					return false;
+		$table_by_main_key = &$this->$table_name[$main_key_value]; // [ Object, Object, ... ]
+		if (empty($table_by_main_key))
+			return false;
 
-				if ($keyname !== null && $value !== null)
-				{
-					foreach ($table_by_main_key as &$row)
-						if ($row->$keyname == $value)
-							return true;
-				}
-				else
+		if ($keyname !== null && $value !== null)
+		{
+			foreach ($table_by_main_key as &$row)
+				if ($row->$keyname == $value)
 					return true;
-
-				break;
 		}
+		else
+			return true;
+
 		return false;
 	}
 
-	// if keyname & value are specified, further filter result with those. For table type NO_KEY $main_key_value is ignored and keyname and value must be filled.
+	// if keyname & value are specified, further filter result with those
     function FindFirst(string $table_name, $main_key_value, string $keyname = null, $value = null)
     {
         if ($this->$table_name === null)
             return null;
 
-        switch($this->key_type[$table_name]) {
-            case TableKeyType::NO_KEY:
-				assert($keyname !== null);
-				assert($value !== null);
-				foreach ($this->$table_name as &$row)
-					if ($row->$keyname == $value)
-						return $row;
-                break;
-            case TableKeyType::KEY:
-                if (!array_key_exists($main_key_value, $this->$table_name))
-                    return null;
+		if (!array_key_exists($main_key_value, $this->$table_name))
+			return null;
 
-                $table_by_main_key = &$this->$table_name[$main_key_value]; // [ Object, Object, ... ]
-                if (empty($table_by_main_key))
-					return null;
+		$table_by_main_key = &$this->$table_name[$main_key_value]; // [ Object, Object, ... ]
+		if (empty($table_by_main_key))
+			return null;
 
-				if ($keyname !== null && $value !== null)
-				{
-					foreach ($table_by_main_key as &$row)
-						if ($row->$keyname == $value)
-							return $row;
-				}
-				else
-					return $table_by_main_key[0]; // return first element, whatever it is
+		if ($keyname !== null && $value !== null)
+		{
+			foreach ($table_by_main_key as &$row)
+				if ($row->$keyname == $value)
+					return $row;
+		}
+		else
+			return $table_by_main_key[0]; // return first element, whatever it is
 
-                break;
-        }
         return null;
     }
     
     function Insert(string $table_name, &$object, &$main_key_value = null)
     {
         assert($this->$table_name !== null);
-        switch($this->key_type[$table_name]) {
-            case TableKeyType::NO_KEY:
-                array_push($this->$table_name, $object);
-                break;
-            case TableKeyType::KEY:
-                assert($main_key_value !== null);
-                if (!array_key_exists($main_key_value, $this->$table_name))
-                    $this->$table_name[$main_key_value] = [];
-                 
-                array_push($this->$table_name[$main_key_value], $object);
-                break;
-        }
+		assert($main_key_value !== null);
+		if (!array_key_exists($main_key_value, $this->$table_name))
+			$this->$table_name[$main_key_value] = [];
+			
+		array_push($this->$table_name[$main_key_value], $object);
     }
 
-	// $main_key_name needed only for tables NO_KEY
-	function Remove(string $table_name, &$main_key_value, $main_key_name = null)
+	function Remove(string $table_name, &$main_key_value)
     {
         assert($this->$table_name !== null);
-        switch($this->key_type[$table_name]) {
-            case TableKeyType::NO_KEY:
-				RemoveAny($this->$table_name, $main_key_name, $main_key_value);
-                break;
-            case TableKeyType::KEY:
-				unset($this->$table_name[$main_key_value]);
-                break;
-        }
+		unset($this->$table_name[$main_key_value]);
     }
 }
 
