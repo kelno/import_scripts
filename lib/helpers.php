@@ -116,8 +116,8 @@ function CheckIdenticalObject(&$objectA, &$objectB) : bool
 // $sortOnKey: key on which the entries will be compared for sorting. For example if there is multiple smart entry for a creature, this is needed to make sure they are compared correctly id matching id.
 function CheckIdentical(array &$sunContainer, array &$tcContainer, string $keyname, $value, $sortOnKey) : bool
 {
-	$sunResults = FindAll($sunContainer, $keyname, $value);
-	$tcResults = FindAll($tcContainer, $keyname, $value);
+	$sunResults = &FindAll($sunContainer, $keyname, $value);
+	$tcResults = &FindAll($tcContainer, $keyname, $value);
 
 	if (count($sunResults) != count($tcResults))
 		return false;
@@ -142,8 +142,8 @@ function FindAll(array &$container, string $keyname, $value) : array
 	if ($container === null)
 		return $results;
 
-	foreach(array_keys($container) as &$key)
-		if($container[$key]->$keyname == $value)
+	foreach (array_keys($container) as &$key)
+		if ($container[$key]->$keyname == $value)
 			array_push($results, $container[$key]);
 			
 	return $results;
