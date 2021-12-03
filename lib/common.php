@@ -115,12 +115,15 @@ class DBStore
 	public $gameobject = null;
 	public $gameobject_addon = null;
 	public $gameobject_entry = null;
+	public $gameobject_loot_template = null;
 	public $gameobject_template = null; 
+	public $gameobject_template_addon = null; 
 	public $gossip_menu = null;
 	public $gossip_menu_option = null;
 	public $gossip_text = null;
 	public $item_template = null;
 	public $npc_text = null;
+	public $page_text = null;
 	public $pickpocketing_loot_template = null;
 	public $points_of_interest = null;
 	public $pool_members = null;
@@ -341,12 +344,15 @@ $loadTableInfos["game_event_gameobject"] = new LoadTableInfo("guid", "guid");
 $loadTableInfos["gameobject"] = new LoadTableInfo("spawnID", "guid");
 $loadTableInfos["gameobject_addon"] = new LoadTableInfo("spawnID", "guid");
 $loadTableInfos["gameobject_entry"] = new LoadTableInfo("spawnID", null, false, true);
+$loadTableInfos["gameobject_loot_template"] = new LoadTableInfo("Entry", "Entry");
 $loadTableInfos["gameobject_template"] = new LoadTableInfo("entry", "entry");
+$loadTableInfos["gameobject_template_addon"] = new LoadTableInfo("entry", "entry");
 $loadTableInfos["gossip_menu"] = new LoadTableInfo("MenuID", "MenuID");
 $loadTableInfos["gossip_menu_option"] = new LoadTableInfo("MenuID", "MenuID");
 $loadTableInfos["gossip_text"] = new LoadTableInfo("ID", null, false, true); // npc_text on TC
 $loadTableInfos["item_template"] = new LoadTableInfo("entry", "entry");
 $loadTableInfos["npc_text"] = new LoadTableInfo(null, "ID", true, false); // gossip_text on Sun
+$loadTableInfos["page_text"] = new LoadTableInfo("ID", "ID");
 $loadTableInfos["pickpocketing_loot_template"] = new LoadTableInfo("Entry", "Entry");
 $loadTableInfos["points_of_interest"] = new LoadTableInfo("ID", "ID");
 $loadTableInfos["pool_members"] = new LoadTableInfo("spawnId", "spawnId");
@@ -651,6 +657,39 @@ class DBConverter
 		} 
 	}
 
+	//returns given id on error as well
+	function ImportPageText(int $tc_page_text_id) : int
+	{
+		if (CheckAlreadyImported($tc_page_text_id))
+			return $tc_page_text_id;
+
+		$this->LoadTable("page_text");
+
+		$tc_text = &$this->tcStore->FindFirst("page_text", $tc_page_text_id);
+		if (!$tc_text) {
+			LogError("Trying to import unknown page text $tc_page_text_id");
+			return $tc_page_text_id;
+		}
+		$existing_sun_text = &$this->sunStore->FindFirst("page_text", $tc_page_text_id);
+		if ($existing_sun_text && $existing_sun_text->Text == $tc_text->Text) {
+			LogDebug("Text $tc_page_text_id already existing with the same text");
+			return $tc_page_text_id;
+		}
+
+		$text_id = $existing_sun_text === null ? $tc_page_text_id : max(array_keys($this->sunStore->page_text))+ 1;
+		$sun_text = $tc_text; // just copy
+		$sun_text->ID = $text_id;
+		unset($sun_text->VerifiedBuild);
+
+		$sql = "DELETE FROM page_text WHERE ID = {$text_id};" . PHP_EOL;
+		fwrite($this->file, $sql);
+
+		$this->sunStore->Insert("page_text", $sun_text, $text_id);
+		fwrite($this->file, WriteObject($this->conn, "page_text", $sun_text)); 
+
+		return $text_id;
+	}
+	
 	function CreateMenuOptions(int $tc_menu_id, int $sun_menu_id)
 	{
 		if (CheckAlreadyImported($tc_menu_id)) {
@@ -708,6 +747,8 @@ class DBConverter
 				) {
 				$sun_option->patch_min = 5; //TLK
 			}
+			
+			//DELETE?
 			
             $this->sunStore->Insert("gossip_menu_option", $sun_option, $sun_menu_id);
 			fwrite($this->file, WriteObject($this->conn, "gossip_menu_option", $sun_option)); 
@@ -1070,7 +1111,6 @@ class DBConverter
             if ($sun_loot->Reference === null)
 				$sun_loot->Reference = 0; // field can't be null
 
-            
             $this->sunStore->Insert($table_name, $sun_loot, $sun_id);
 			BatchWrite($this->file, $this->conn, $table_name, $sun_loot);
 			//fwrite($this->file, WriteObject($this->conn, $table_name, $sun_loot)); 
@@ -1125,7 +1165,7 @@ class DBConverter
         
         $this->LoadTable("creature_template_addon");
         
-		$tc_creature_template_addon = $this->tcStore->FindFirst("creature_template_addon", $creature_id);
+		$tc_creature_template_addon = &$this->tcStore->FindFirst("creature_template_addon", $creature_id);
 		if ($tc_creature_template_addon === null)
             return;
         
@@ -1269,8 +1309,8 @@ class DBConverter
 		array_push($this->just_imported_creatures, $creature_id);
         $this->LoadTable("creature_template");
 
-		$creature_template = $this->tcStore->FindFirst("creature_template", $creature_id);
-		if ($creature_template === null)
+		$tc_creature_template = &$this->tcStore->FindFirst("creature_template", $creature_id);
+		if ($tc_creature_template === null)
 			throw new ImportException("Trying to import non existing TLK creature template {$creature_id}");
 
 		$sun_results = &$this->sunStore->FindAll("creature_template", $creature_id);
@@ -1278,6 +1318,7 @@ class DBConverter
 			throw new ImportException("Trying to import already existing creature template {$creature_id}");
 
         // use TC entry copy and make some arrangements
+		$creature_template = $tc_creature_template;
 		$creature_template->patch = 5;
         unset($creature_template->import);
         unset($creature_template->movementId);
@@ -1300,6 +1341,8 @@ class DBConverter
         $this->ImportCreatureTemplateSpell($creature_id);
         
         $this->ImportCreatureSmartAI($creature_id);
+
+		//Todo: npc spell click spells... already done manually so we won't do it here but it was missing
 	}
 
 	function IsIdenticalSmartAI(int $entry, bool $creature) : bool
@@ -1307,6 +1350,27 @@ class DBConverter
 		$sun_results = &$this->sunStore->FindAll("smart_scripts", $entry);
 		$tc_results = &$this->tcStore->FindAll("smart_scripts", $entry);
 		return CheckIdentical($sun_results, $tc_results, "source_type", $creature ? SmartSourceType::creature : SmartSourceType::gameobject, "id");
+	}
+
+	function ImportGameObjectSmartAI(int $gob_id)
+	{
+		if (CheckAlreadyImported($gob_id))
+			return;
+        
+        $this->LoadTable("gameobject_template");
+        
+		$tc_gameobject_template = $this->tcStore->FindFirst("gameobject_template", $gob_id);
+        if ($tc_gameobject_template->AIName != "SmartAI")
+            return;
+
+		$this->LoadTable("smart_scripts");
+		if ($this->IsIdenticalSmartAI($gob_id, false)) {
+			//echo "Already identical, skipping" . PHP_EOL;
+			LogDebug("SmartAI for gob {$gob_id} is already in db and identical.");
+			return;
+		}
+
+		$this->CreateSmartAI(SmartSourceType::gameobject, $gob_id, SmartSourceType::gameobject, $gob_id, false);
 	}
 	
     function ImportCreatureSmartAI(int $creature_id)
@@ -1838,7 +1902,7 @@ class DBConverter
                     break;
 				case SmartAction::RESPAWN_BY_SPAWNID:
 					$shouldKeep = false;
-					$spawnType = $sun_smart_entry->action_param1;
+					$spawnType = MapSpawnType::from($sun_smart_entry->action_param1);
 					$spawn_id = $sun_smart_entry->action_param2;
 					try {
 						if ($spawnType == MapSpawnType::creature)
@@ -2252,11 +2316,12 @@ class DBConverter
         
 		$results = &$this->tcStore->FindAll("spawn_group", $spawn_id);
 		foreach($results as &$result) {
+			$spawn_type = MapSpawnType::from($result->spawnType);
 			if ($creature) {
-				if ($result->spawnType != MapSpawnType::creature) //creature type
+				if ($spawn_type != MapSpawnType::creature)
 					continue;
 			} else {
-				if ($result->spawnType != MapSpawnType::gameobject) //gob type
+				if ($spawn_type != MapSpawnType::gameobject)
 					continue;
 			}
 				
@@ -2546,42 +2611,142 @@ class DBConverter
 		$this->delayed_formations_imports = "";
 	}
 	
-	function ImportGameObjectTemplate($id)
+	function ImportGameObjectTemplateAddon($gob_id)
+	{
+		if (CheckAlreadyImported($gob_id))
+			return;
+		
+		$this->LoadTable("gameobject_template_addon");
+		
+		$tc_gameobject_template_addon = &$this->tcStore->FindFirst("gameobject_template_addon", $gob_id);
+		if ($tc_gameobject_template_addon === null)
+			return;
+		
+		$sun_result = $this->sunStore->FindFirst("gameobject_template_addon", $gob_id); // ignore patch here, most of the time we just want to use the same data for both TBC and TLK
+		if (!empty($sun_result)) {
+			if (CheckIdenticalObject($sun_result, $tc_gameobject_template_addon))
+			{
+				LogDebug("Found identical gameobject_template_addon for {$gob_id}.");
+				return; // already identical
+			}
+			throw new ImportException("Trying to import already existing gameobject template addon {$gob_id}");
+		}
+
+		// just copy one and make some arrangements
+		$sun_gameobject_template_addon = $tc_gameobject_template_addon;
+
+		$this->sunStore->Remove("gameobject_template_addon", $gob_id);
+		$sql = "DELETE FROM gameobject_template_addon WHERE entry = {$gob_id};" . PHP_EOL;
+		fwrite($this->file, $sql); 
+
+		$this->sunStore->Insert("gameobject_template_addon", $sun_gameobject_template_addon, $gob_id);
+		fwrite($this->file, WriteObject($this->conn, "gameobject_template_addon", $sun_gameobject_template_addon)); 
+	}
+	
+	function ImportGameObjectTemplate($gob_id)
 	{
         $this->LoadTable("gameobject_template");
         
-		$tc_gameobject_template = &$this->tcStore->FindFirst("gameobject_template", $id);
+		$tc_gameobject_template = &$this->tcStore->FindFirst("gameobject_template", $gob_id);
 		assert($tc_gameobject_template !== null);
 		
 		$sun_gameobject_template = new stdClass;
-		$sun_gameobject_template->entry = $id;
+		$sun_gameobject_template->entry = $gob_id;
+		$sun_gameobject_template->patch = 5;
 		$sun_gameobject_template->type = $tc_gameobject_template->type;
 		$sun_gameobject_template->displayId = $tc_gameobject_template->displayId;
 		$sun_gameobject_template->name = $tc_gameobject_template->name;
 		$sun_gameobject_template->castBarCaption = $tc_gameobject_template->castBarCaption;
-		$sun_gameobject_template->faction = 0;
-		$sun_gameobject_template->flags = 0;
 		$sun_gameobject_template->size = $tc_gameobject_template->size;
 		for($i = 0; $i < 24; $i++) {
 			$sun_field_name = 'data' . $i;
 			$tc_field_name = 'Data' . $i;
 			$sun_gameobject_template->$sun_field_name = $tc_gameobject_template->$tc_field_name;
 		}
-		$sun_gameobject_template->AIName = ""; //$tc_gameobject_template->AIName;
-		$sun_gameobject_template->ScriptName = ""; //$tc_gameobject_template->ScriptName;
 		
-		$isTLKGameObject = FindFirst($this->sunStore->FindAll("gameobject_template", $tc_gameobject->id), "patch", 0) !== null;
+		// Import more things depending on data
+		switch(GameobjectTypes::from($tc_gameobject_template->type)) {
+			case GameobjectTypes::DOOR:
+			case GameobjectTypes::BUTTON:
+				break;
+			case GameobjectTypes::QUESTGIVER:
+				$menu_id = &$sun_gameobject_template->data3;
+				if ($menu_id)
+					$menu_id = $this->CreateMenu($menu_id);
+				break;
+			case GameobjectTypes::CHEST:
+				$loot_id = &$sun_gameobject_template->data1;
+				if ($loot_id)
+					$loot_id = $this->ImportLootTemplate("gameobject_loot_template", $loot_id);
+				break;
+			case GameobjectTypes::BINDER:
+			case GameobjectTypes::GENERIC:
+			case GameobjectTypes::TRAP:
+			case GameobjectTypes::CHAIR:
+			case GameobjectTypes::SPELL_FOCUS:
+				break;
+			case GameobjectTypes::TEXT:
+				$page_id = &$sun_gameobject_template->data0;
+				if ($page_id)
+					$page_id = $this->ImportPageText($page_id);
+				break;
+			case GameobjectTypes::GOOBER:
+				$page_id = &$sun_gameobject_template->data7;
+				if ($page_id)
+					$page_id = $this->ImportPageText($page_id);
+				$menu_id = &$sun_gameobject_template->data19;
+				if ($menu_id)
+					$menu_id = $this->CreateMenu($menu_id);
+				break;
+			case GameobjectTypes::TRANSPORT:
+			case GameobjectTypes::AREADAMAGE:
+			case GameobjectTypes::CAMERA:
+			case GameobjectTypes::MAP_OBJECT:
+			case GameobjectTypes::MO_TRANSPORT:
+			case GameobjectTypes::DUEL_ARBITER:
+				break;
+			case GameobjectTypes::FISHINGNODE: // has loot id but nothing new to import for TLK
+			case GameobjectTypes::SUMMONING_RITUAL:
+			case GameobjectTypes::MAILBOX:
+			case GameobjectTypes::AUCTIONHOUSE:
+			case GameobjectTypes::GUARDPOST:
+			case GameobjectTypes::SPELLCASTER:
+			case GameobjectTypes::MEETINGSTONE:
+			case GameobjectTypes::FLAGSTAND:
+			case GameobjectTypes::FISHINGHOLE:
+			case GameobjectTypes::FLAGDROP:
+			case GameobjectTypes::MINI_GAME:
+			case GameobjectTypes::LOTTERY_KIOSK:
+			case GameobjectTypes::CAPTURE_POINT:
+			case GameobjectTypes::AURA_GENERATOR:
+			case GameobjectTypes::DUNGEON_DIFFICULTY:
+			case GameobjectTypes::BARBER_CHAIR:
+			case GameobjectTypes::DESTRUCTIBLE_BUILDING:
+			case GameobjectTypes::GUILD_BANK:
+			case GameobjectTypes::TRAPDOOR:
+				break;
+		}
+
+		$sun_gameobject_template->AIName = $tc_gameobject_template->AIName;
+		$sun_gameobject_template->ScriptName = $tc_gameobject_template->ScriptName; // if there is anything there it will be an error at loading later when starting core, but that's good.
+		
+		$isTLKGameObject = FindFirst($this->sunStore->FindAll("gameobject_template", $tc_gameobject_template->entry), "patch", 0) !== null;
 		if ($isTLKGameObject)
 			$sun_gameobject_template->patch = 5;
 		
-		if ($tc_gameobject_template->AIName != "") 
-			echo "WARNING: Importing gameobject template {$id} which has AIName {$tc_gameobject_template->AIName}" . PHP_EOL;
-		
 		if ($tc_gameobject_template->ScriptName != "")
-			echo "WARNING: Importing gameobject template {$id} which has ScriptName {$tc_gameobject_template->ScriptName}" . PHP_EOL;
+			echo "WARNING: Importing gameobject template {$gob_id} which has ScriptName {$tc_gameobject_template->ScriptName}" . PHP_EOL;
 		
+		$this->sunStore->Remove("gameobject_template", $sun_gameobject_template->entry);
+		$sql = "DELETE FROM gameobject_template WHERE entry = {$sun_gameobject_template->entry} AND patch = 5;" . PHP_EOL;
+		fwrite($this->file, $sql);
+
 		$this->sunStore->Insert("gameobject_template", $sun_gameobject_template, $sun_gameobject_template->entry);
 		fwrite($this->file, WriteObject($this->conn, "gameobject_template", $sun_gameobject_template));
+
+        $this->ImportGameObjectTemplateAddon($gob_id);
+
+        $this->ImportGameObjectSmartAI($gob_id);
 	}
 	
 	function ImportTCGameObject(int $spawn_id, int $patch_min = 0, int $patch_max = 10)

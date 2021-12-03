@@ -1,9 +1,9 @@
 <?php
 
-abstract class MapSpawnType
+enum MapSpawnType : int
 {
-	const creature = 0;
-	const gameobject = 1;
+    case creature = 0;
+    case gameobject = 1;
 }
 
 abstract class TCCreatureFlagsExtra {
@@ -70,3 +70,43 @@ abstract class SunCreatureFlagsExtra {
     const CREATURE_FLAG_EXTRA_NO_COMBAT = 0x02000000;         // creature is not allowed to enter combat
     const CREATURE_FLAG_EXTRA_NO_EVADE_TELEPORT = 0x04000000; // No teleport on soft evade for dungeon creatures
 };
+
+enum GameobjectTypes : int
+{
+    case DOOR                   = 0;
+    case BUTTON                 = 1;
+    case QUESTGIVER             = 2;
+    case CHEST                  = 3;
+    case BINDER                 = 4;
+    case GENERIC                = 5;
+    case TRAP                   = 6;
+    case CHAIR                  = 7;
+    case SPELL_FOCUS            = 8;
+    case TEXT                   = 9;
+    case GOOBER                 = 10;
+    case TRANSPORT              = 11;
+    case AREADAMAGE             = 12;
+    case CAMERA                 = 13;
+    case MAP_OBJECT             = 14;
+    case MO_TRANSPORT           = 15;
+    case DUEL_ARBITER           = 16;
+    case FISHINGNODE            = 17;
+    case SUMMONING_RITUAL       = 18;
+    case MAILBOX                = 19;
+    case AUCTIONHOUSE           = 20;
+    case GUARDPOST              = 21;
+    case SPELLCASTER            = 22;
+    case MEETINGSTONE           = 23;
+    case FLAGSTAND              = 24;
+    case FISHINGHOLE            = 25;
+    case FLAGDROP               = 26;
+    case MINI_GAME              = 27;
+    case LOTTERY_KIOSK          = 28;
+    case CAPTURE_POINT          = 29;
+    case AURA_GENERATOR         = 30;
+    case DUNGEON_DIFFICULTY     = 31;
+    case BARBER_CHAIR           = 32;
+    case DESTRUCTIBLE_BUILDING  = 33;
+    case GUILD_BANK             = 34;
+    case TRAPDOOR               = 35;
+}
