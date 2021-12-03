@@ -203,9 +203,9 @@ class DBStore
 			return $results;
 
 		foreach ($this->$table_name as &$value_array)
-		foreach ($value_array as &$value)
-			if ($value->$field_name == $field_value)
-				array_push($results, $value);
+			foreach ($value_array as &$value)
+				if ($value->$field_name == $field_value)
+					array_push($results, $value);
 		
         return $results;
 	}
@@ -288,6 +288,18 @@ class DBStore
         assert($this->$table_name !== null);
 		unset($this->$table_name[$main_key_value]);
     }
+
+	function RemoveOnCondition(string $table_name, &$main_key_value, $other_field_name, $other_field_value)
+    {
+        assert($this->$table_name !== null);
+		
+		if (array_key_exists($main_key_value, $this->$table_name)) {
+			$array = &$this->$table_name[$main_key_value];
+			foreach ($array as $key => &$value)
+				if ($value->$other_field_name == $other_field_value)
+					unset($array[$key]);
+		}
+    }
 }
 
 class LoadTableInfo
@@ -342,7 +354,7 @@ $loadTableInfos["pool_template"] = new LoadTableInfo("entry", "entry");
 $loadTableInfos["reference_loot_template"] = new LoadTableInfo("Entry", "Entry");
 $loadTableInfos["skinning_loot_template"] = new LoadTableInfo("Entry", "Entry");
 $loadTableInfos["smart_scripts"] = new LoadTableInfo("entryorguid", "entryorguid");
-$loadTableInfos["spawn_group"] = new LoadTableInfo("groupId", "groupId");
+$loadTableInfos["spawn_group"] = new LoadTableInfo("spawnId", "spawnId");
 $loadTableInfos["spell_template"] = new LoadTableInfo("entry", null, false, true);
 $loadTableInfos["trainer"] = new LoadTableInfo("Id", "Id");
 $loadTableInfos["trainer_spell"] = new LoadTableInfo("TrainerId", "TrainerId");
@@ -1097,12 +1109,10 @@ class DBConverter
 	function DeleteLKCreatureEntry(string $table_name, string $key_column_name, string $patch_column_name = null, int $creature_id)
 	{
         $this->LoadTable($table_name);
-		if (array_key_exists($creature_id,$this->sunStore->$table_name)) {
-			$array = &$this->sunStore->$table_name[$creature_id];
-			foreach($this->sunStore->$table_name[$creature_id] as $key => &$value) 
-				if ($patch_column_name === null || $value->$patch_column_name == 5)
-					unset($array[$key]);
-		}
+		if ($patch_column_name === null)
+			$this->sunStore->Remove($table_name, $creature_id);
+		else
+			$this->sunStore->RemoveOnCondition($table_name, $creature_id, $patch_column_name, 5);
 
 		$sql = "DELETE FROM {$table_name} WHERE {$key_column_name} = {$creature_id}" . ($patch_column_name !== null ? " AND {$patch_column_name} = 5" : "") . ";" . PHP_EOL;
 		fwrite($this->file, $sql); 
@@ -2045,7 +2055,7 @@ class DBConverter
 				case 31: //SCRIPT_COMMAND_EQUIP
                     $equipment_id = $tc_waypoint_script->datalong;
                     if (!$this->sunStore->Exists("creature_equip_template", $equipment_id))
-                        LogError("Waypoint scripts action id {$action_id} has SCRIPT_COMMAND_EQUIP using unknown equipment {$sun_equipment}");
+                        LogError("Waypoint scripts action id {$action_id} has SCRIPT_COMMAND_EQUIP using unknown equipment {$equipment_id}");
                     break;
 				case 35: //SCRIPT_COMMAND_MOVEMENT
 					$movement_type = $tc_waypoint_script->datalong;
@@ -2233,14 +2243,14 @@ class DBConverter
 		return $sun_path_id;
 	}
 
-	function ImportSpawnGroup(int $guid, bool $creature) //else gameobject
+	function ImportSpawnGroup(int $spawn_id, bool $creature) //else gameobject
 	{
-		if (CheckAlreadyImported($guid + $creature << 31))
+		if (CheckAlreadyImported($spawn_id + $creature << 31))
 			return;
-		
+
         $this->LoadTable("spawn_group");
         
-		$results = &$this->tcStore->FindAll("spawn_group", $guid);
+		$results = &$this->tcStore->FindAll("spawn_group", $spawn_id);
 		foreach($results as &$result) {
 			if ($creature) {
 				if ($result->spawnType != MapSpawnType::creature) //creature type
@@ -2253,8 +2263,11 @@ class DBConverter
 			$groupId = $result->groupId;
 			$sun_spawn_group = $result; //copy
 			$sun_spawn_group->groupId = $groupId;
-			
-            $this->sunStore->Insert("spawn_group", $sun_spawn_group, $groupId);
+			 
+			$this->sunStore->RemoveOnCondition("spawn_group", $spawn_id, "spawnType", $result->spawnType);
+			fwrite($this->file, "DELETE FROM spawn_group WHERE spawnId = {$spawn_id} AND spawnType = {$result->spawnType};" . PHP_EOL);
+
+            $this->sunStore->Insert("spawn_group", $sun_spawn_group, $spawn_id);
 			fwrite($this->file, WriteObject($this->conn, "spawn_group", $sun_spawn_group));
 		}
 	}
