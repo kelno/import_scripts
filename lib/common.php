@@ -2466,6 +2466,7 @@ class DBConverter
 		$sun_creature->spawnID = $spawn_id;
 		$sun_creature->map = $tc_creature->map;
 		$sun_creature->spawnMask = $tc_creature->spawnMask;
+		$sun_creature->phaseMask = $tc_creature->phaseMask;
         // for now just let the core filter out the bad models. creature_model_info needs to be filled with all the TC values already
 		$sun_creature->modelid = $tc_creature->modelid ? $tc_creature->modelid : null;
 		$sun_creature->equipment_id = $tc_creature->equipment_id; //import equip ID?
