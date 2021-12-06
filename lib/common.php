@@ -2381,7 +2381,7 @@ class DBConverter
 			$sun_formation->leaderGUID = $leaderGUID;
 			$sun_formation->memberGUID = $tc_formation->memberGUID;
 			$sun_formation->dist = $tc_formation->dist;
-			$sun_formation->groupAI = 2;//alway 2, we don't use the same AI system than TC
+			$sun_formation->groupAI = 515; // = FULL_SUPPORT = fixed value because we don't use the same AI system than TC
 			$sun_formation->angle = deg2rad($tc_formation->angle); //TC has degree, Sun has radian
 			
             $this->sunStore->Insert("creature_formations", $sun_formation, $sun_formation->memberGUID);
