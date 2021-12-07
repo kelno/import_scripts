@@ -1,7 +1,7 @@
 #
  import_scripts
 
-A collection of scripts to import 
+A collection of scripts to import. Most of them were run once then never used again and are not maintained.
 
 **convert_game_event.php**:  
 One time script to convert match sunstrider events id to TC ones, or move the ones not matching out of TC range.
@@ -12,8 +12,11 @@ Convert old sunstrider creature.pool_id column to creature_formations system.
 **convert_pools_to_gameobject_entry.php**:  
 Clear up some pools by using sunstrider gameobject_entry table instead. Was mostly used to clear up the pool system of the resource nodes?
 
+**convert_pools_to_gameobject_entry_2.php**:  
+Same but instead of converting pools of pools, convert other cases with simple pools. Both script should be used.
+
 **creature_import.php**:   
-Import from TC creature table
+Import from TC creature table.
 
 ```SQL
 ALTER TABLE `trinityworld`.`creature`   
@@ -25,6 +28,9 @@ Old version of creature_import.php, not using the common library. Probably the f
  
  **creature_template_import.php**:  
 Import all missing TC creature_template to sunstrider db.
+
+**gameobject_template_import.php**:
+Same as creature_template_import for gameobjects.
 
 **gob_import.php**:  
 Import from TC gameobject table
@@ -44,6 +50,9 @@ ALTER TABLE `trinityworld`.`creature_template`
 
 **gossips_select.php**:  
 Interactive UI, help to choose which gossip to import from TC for creature template having no gossip in sunstrider but gossips in TC.
+
+**import_all_lk_spawns.php**:
+Import all TLK creatures and gameobjects at once.
 
 **mangos_fishing_import.php**:  
 Import some fishies from mangos.
