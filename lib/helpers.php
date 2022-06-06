@@ -94,7 +94,7 @@ function CheckIdenticalObject(&$objectA, &$objectB) : bool
     return true;
 }
 
-function _CheckIdentical(array &$sun_results, array &$tc_results, &$sortOnKey) : bool
+function _CheckIdentical(array &$sun_results, array &$tc_results, $sortOnKey) : bool
 {
 	if (count($sun_results) != count($tc_results))
 		return false;
