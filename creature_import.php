@@ -8,6 +8,7 @@ $output_filename = "creature.sql";
 $file = fopen($output_filename, "w");
 if (!$file)
 	die("Couldn't open {$output_filename}");
+
 fwrite($file, "START TRANSACTION;" . PHP_EOL);
 
 $start = microtime(true);

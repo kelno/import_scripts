@@ -2469,7 +2469,6 @@ class DBConverter
 		$sun_creature->phaseMask = $tc_creature->phaseMask;
         // for now just let the core filter out the bad models. creature_model_info needs to be filled with all the TC values already
 		$sun_creature->modelid = $tc_creature->modelid ? $tc_creature->modelid : null;
-		$sun_creature->equipment_id = $tc_creature->equipment_id; //import equip ID?
 		$sun_creature->position_x = $tc_creature->position_x;
 		$sun_creature->position_y = $tc_creature->position_y;
 		$sun_creature->position_z = $tc_creature->position_z;
@@ -2529,7 +2528,7 @@ class DBConverter
 		if ($tc_gec !== null) {
 			$sun_gec = new stdClass;
             //TODO: tc event might not exists... but if it exists we assume it's the right one, we made some id sync for that before
-			$sun_gec->event = $tc_gec->eventEntry;
+			$sun_gec->eventEntry = $tc_gec->eventEntry;
 			$sun_gec->guid = $spawn_id;
             $this->sunStore->Insert("game_event_creature", $sun_gec, $spawn_id);
 			fwrite($this->file, WriteObject($this->conn, "game_event_creature", $sun_gec));
@@ -2815,7 +2814,7 @@ class DBConverter
 		$tc_geg = $this->tcStore->FindFirst("game_event_gameobject", $spawn_id);
 		if ($tc_geg !== null) {
 			$sun_geg = new stdClass;
-			$sun_geg->event = $tc_geg->eventEntry;
+			$sun_geg->eventEntry = $tc_geg->eventEntry;
 			$sun_geg->guid = $spawn_id;
             $this->sunStore->Insert("game_event_gameobject", $sun_geg, $spawn_id);
 			fwrite($this->file, WriteObject($this->conn, "game_event_gameobject", $sun_geg));
